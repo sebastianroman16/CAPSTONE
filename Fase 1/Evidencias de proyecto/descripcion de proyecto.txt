@@ -1,0 +1,40 @@
+LEX-CORPUS — Capa de organización y comunicación para abogados de asistencia judicial
+Descripción general
+Herramienta complementaria al sistema oficial de gestión de causas (SAJ), pensada para abogados de las Corporaciones de Asistencia Judicial que manejan un volumen alto de causas simultáneas. Organiza el trabajo diario del abogado y mantiene informado al cliente sin necesidad de contacto directo, reduciendo la carga de consultas repetitivas.
+Problema que resuelve
+Un abogado puede llevar cientos de causas activas a la vez. El SAJ registra la causa oficialmente, pero no ayuda a priorizar el día a día ni a comunicar avances al cliente — eso hoy se resuelve con llamadas, visitas presenciales o correos sueltos.
+
+Funcionalidades — Abogado
+Panel personal de causas
+* Crear, editar y archivar causas (referencia, cliente, materia, fecha, prioridad, notas privadas)
+* Filtrar/ordenar por prioridad, materia o cliente
+* Carga masiva vía Excel: importar el Excel exportado desde SAJ/CAJ, con mapeo de columnas, previsualización, detección de duplicados y carga masiva
+Recordatorios y prioridades
+* Marcar urgencia por causa, fechas clave (audiencias, plazos) con recordatorio
+* Vista de pendientes de hoy/semana
+Comunicación con el cliente
+* Enviar estado breve por correo/WhatsApp, con historial de lo informado
+Intercambio de documentos
+* Solicitar documentos al cliente (con estado pendiente/recibido)
+* Subir documentos para que el cliente descargue
+* Repositorio de documentos por causa
+Ingesta automática de notificaciones del Poder Judicial
+* Lectura de los correos que el Poder Judicial envía por causa, que traen tres tipos de contenido a procesar:
+    * Texto del cuerpo del correo: detalla causa, rol y otros datos — se extrae directo como texto.
+    * Excel adjunto de movimientos (todas las causas, sin cabecera): se procesa con mapeo posicional de columnas + validación por patrón de dato (ej. formato de rol, formato de fecha), para detectar si el formato cambió en vez de guardar mal silenciosamente.
+    * PDF de citaciones (ej. invitación a audiencia preparatoria u otra): extracción de texto del PDF para identificar tipo de audiencia, fecha y tribunal.
+* Todo lo anterior cae en una bandeja de "movimientos por confirmar", separada del estado visible al cliente.
+* El abogado revisa y confirma con un clic → recién ahí se refleja como estado oficial visible para el cliente.
+* Este diseño evita que una mala interpretación automática le informe algo incorrecto al cliente.
+
+Funcionalidades — Cliente
+Portal de solo lectura
+* Ver el estado actual y el historial completo de estados de su causa
+* Ver y responder solicitudes de documentos (subir lo pedido)
+* Descargar documentos que el abogado dejó disponibles
+* Recibir notificaciones (correo/WhatsApp) ante nuevos estados o solicitudes de documentos
+
+Fuera de alcance (a propósito)
+* No gestiona ni modifica causas oficialmente — eso sigue en el SAJ.
+* No requiere integración con sistemas gubernamentales.
+* Ningún dato ingerido automáticamente (Excel/PDF/correo) se muestra al cliente sin que el abogado lo confirme primero.
