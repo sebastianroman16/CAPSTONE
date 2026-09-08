@@ -1,40 +1,137 @@
-LEX-CORPUS — Capa de organización y comunicación para abogados de asistencia judicial
-Descripción general
-Herramienta complementaria al sistema oficial de gestión de causas (SAJ), pensada para abogados de las Corporaciones de Asistencia Judicial que manejan un volumen alto de causas simultáneas. Organiza el trabajo diario del abogado y mantiene informado al cliente sin necesidad de contacto directo, reduciendo la carga de consultas repetitivas.
-Problema que resuelve
-Un abogado puede llevar cientos de causas activas a la vez. El SAJ registra la causa oficialmente, pero no ayuda a priorizar el día a día ni a comunicar avances al cliente — eso hoy se resuelve con llamadas, visitas presenciales o correos sueltos.
+================================================================================
+LEX-CORPUS
+Capa de organización y comunicación para abogados de asistencia judicial
+================================================================================
 
-Funcionalidades — Abogado
-Panel personal de causas
-* Crear, editar y archivar causas (referencia, cliente, materia, fecha, prioridad, notas privadas)
-* Filtrar/ordenar por prioridad, materia o cliente
-* Carga masiva vía Excel: importar el Excel exportado desde SAJ/CAJ, con mapeo de columnas, previsualización, detección de duplicados y carga masiva
-Recordatorios y prioridades
-* Marcar urgencia por causa, fechas clave (audiencias, plazos) con recordatorio
-* Vista de pendientes de hoy/semana
-Comunicación con el cliente
-* Enviar estado breve por correo/WhatsApp, con historial de lo informado
-Intercambio de documentos
-* Solicitar documentos al cliente (con estado pendiente/recibido)
-* Subir documentos para que el cliente descargue
-* Repositorio de documentos por causa
-Ingesta automática de notificaciones del Poder Judicial
-* Lectura de los correos que el Poder Judicial envía por causa, que traen tres tipos de contenido a procesar:
-    * Texto del cuerpo del correo: detalla causa, rol y otros datos — se extrae directo como texto.
-    * Excel adjunto de movimientos (todas las causas, sin cabecera): se procesa con mapeo posicional de columnas + validación por patrón de dato (ej. formato de rol, formato de fecha), para detectar si el formato cambió en vez de guardar mal silenciosamente.
-    * PDF de citaciones (ej. invitación a audiencia preparatoria u otra): extracción de texto del PDF para identificar tipo de audiencia, fecha y tribunal.
-* Todo lo anterior cae en una bandeja de "movimientos por confirmar", separada del estado visible al cliente.
-* El abogado revisa y confirma con un clic → recién ahí se refleja como estado oficial visible para el cliente.
-* Este diseño evita que una mala interpretación automática le informe algo incorrecto al cliente.
+--------------------------------------------------------------------------------
+1. DESCRIPCIÓN GENERAL
+--------------------------------------------------------------------------------
+Herramienta complementaria al sistema oficial de gestión de causas (SAJ),
+pensada para abogados de las Corporaciones de Asistencia Judicial que manejan
+un volumen alto de causas simultáneas. Organiza el trabajo diario del abogado
+y mantiene informado al cliente sin necesidad de contacto directo, reduciendo
+la carga de consultas repetitivas.
 
-Funcionalidades — Cliente
-Portal de solo lectura
-* Ver el estado actual y el historial completo de estados de su causa
-* Ver y responder solicitudes de documentos (subir lo pedido)
-* Descargar documentos que el abogado dejó disponibles
-* Recibir notificaciones (correo/WhatsApp) ante nuevos estados o solicitudes de documentos
+--------------------------------------------------------------------------------
+2. PROBLEMA QUE RESUELVE
+--------------------------------------------------------------------------------
+Un abogado puede llevar cientos de causas activas a la vez. El SAJ registra
+la causa oficialmente, pero no ayuda a priorizar el día a día ni a comunicar
+avances al cliente. Hoy eso se resuelve con llamadas, visitas presenciales o
+correos sueltos, lo que consume tiempo que el abogado no tiene.
 
-Fuera de alcance (a propósito)
-* No gestiona ni modifica causas oficialmente — eso sigue en el SAJ.
-* No requiere integración con sistemas gubernamentales.
-* Ningún dato ingerido automáticamente (Excel/PDF/correo) se muestra al cliente sin que el abogado lo confirme primero.
+--------------------------------------------------------------------------------
+3. FUNCIONALIDADES — ABOGADO
+--------------------------------------------------------------------------------
+
+3.1 Panel personal de causas
+    - Crear, editar y archivar causas (referencia, cliente, materia, fecha,
+      prioridad, notas privadas)
+    - Filtrar/ordenar por prioridad, materia o cliente
+    - Carga masiva vía Excel: importar el Excel exportado desde SAJ/CAJ, con
+      mapeo de columnas, previsualización, detección de duplicados y carga
+      masiva
+
+3.2 Recordatorios y prioridades
+    - Marcar urgencia por causa
+    - Fechas clave (audiencias, plazos) con recordatorio
+    - Vista de pendientes de hoy/semana
+
+3.3 Comunicación con el cliente
+    - Enviar estado breve por correo/WhatsApp
+    - Historial de lo informado
+
+3.4 Intercambio de documentos
+    - Solicitar documentos al cliente (con estado pendiente/recibido)
+    - Subir documentos para que el cliente descargue
+    - Repositorio de documentos por causa
+
+3.5 Ingesta automática de notificaciones del Poder Judicial (incluida en v1)
+    Lectura de los correos que el Poder Judicial envía por causa, que traen
+    tres tipos de contenido a procesar:
+
+      a) Texto del cuerpo del correo: detalla causa, rol y otros datos —
+         se extrae directo como texto.
+      b) Excel adjunto de movimientos (todas las causas, sin cabecera):
+         se procesa con mapeo posicional de columnas + validación por
+         patrón de dato (ej. formato de rol, formato de fecha), para
+         detectar si el formato cambió en vez de guardar mal
+         silenciosamente.
+      c) PDF de citaciones (ej. invitación a audiencia preparatoria u
+         otra): extracción de texto del PDF para identificar tipo de
+         audiencia, fecha y tribunal.
+
+    Todo lo anterior cae en una bandeja de "movimientos por confirmar",
+    separada del estado visible al cliente. El abogado revisa y confirma
+    con un clic; recién ahí se refleja como estado oficial visible para
+    el cliente. Este diseño evita que una mala interpretación automática
+    le informe algo incorrecto al cliente.
+
+--------------------------------------------------------------------------------
+4. FUNCIONALIDADES — CLIENTE
+--------------------------------------------------------------------------------
+
+4.1 Portal de solo lectura
+    - Ver el estado actual y el historial completo de estados de su causa
+    - Ver y responder solicitudes de documentos (subir lo pedido)
+    - Descargar documentos que el abogado dejó disponibles
+    - Recibir notificaciones (correo/WhatsApp) ante nuevos estados o
+      solicitudes de documentos
+
+--------------------------------------------------------------------------------
+5. FUERA DE ALCANCE (A PROPÓSITO)
+--------------------------------------------------------------------------------
+    - No gestiona ni modifica causas oficialmente — eso sigue en el SAJ.
+    - No requiere integración con sistemas gubernamentales.
+    - Ningún dato ingerido automáticamente (Excel/PDF/correo) se muestra
+      al cliente sin que el abogado lo confirme primero.
+
+--------------------------------------------------------------------------------
+6. DECISIONES TÉCNICAS
+--------------------------------------------------------------------------------
+
+6.1 Stack tecnológico
+    - Frontend:      Angular
+    - Backend:       NestJS
+    - Base de datos: PostgreSQL
+    - Despliegue:    en la nube (proveedor por definir)
+
+6.2 Arquitectura
+    - Monolito modular. Backend NestJS organizado internamente en módulos por
+      dominio: Causas, Documentos, Notificaciones, Usuarios, Ingesta de
+      correo.
+    - 3 piezas desplegadas: Angular (frontend), NestJS (backend),
+      Postgres (base de datos).
+
+6.3 Despliegue
+    - Evaluado: desplegar todo en un mismo proveedor.
+    - Proveedor final: pendiente de definir.
+
+--------------------------------------------------------------------------------
+7. DECISIONES DE GESTIÓN
+--------------------------------------------------------------------------------
+
+7.1 Metodología de desarrollo
+    - Kanban para el flujo de trabajo diario (tablero, sin sprints
+      rígidos ni roles formales asignados por persona).
+    - Iteraciones de tiempo fijo tipo Scrum usadas únicamente para
+      planificación y reuniones de cierre/avance (sin adoptar roles ni
+      ceremonias completas de Scrum).
+
+--------------------------------------------------------------------------------
+8. PRÓXIMOS PASOS
+--------------------------------------------------------------------------------
+    - Historias de usuario (siguiente entregable, no depende de ninguna
+      decisión pendiente)
+    - Diagramas de casos de uso
+    - Modelo de base de datos
+    - Diagrama de clases
+    - Diagramas de actividad
+    - Mockups
+    - Documentos de gestión: actas de reunión, estados de avance,
+      resolución de conflictos, documentación de stakeholders, plan del
+      proyecto (según metodología Kanban + iteraciones definida)
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
