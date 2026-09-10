@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>LEX-CORPUS · Registrar causa</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#EFE7D8;
+    --paper-raised:#F8F2E6;
+    --ink:#2E2118;
+    --ink-soft:#6B5A48;
+    --burgundy:#6B1F2A;
+    --burgundy-deep:#4A121C;
+    --gold:#A87C3F;
+    --olive:#6E7A4A;
+    --line:#D9CBAE;
+    --focus:#8C2A36;
+    --sidebar-w:250px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    min-height:100vh;
+  }
+  svg.icon{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto;}
+
+  /* ---- shell (same as vista 5) ---- */
+  .shell{display:flex; min-height:100vh;}
+  .sidebar{
+    width:var(--sidebar-w); flex:0 0 auto; background:var(--paper-raised);
+    border-right:1px solid var(--line); display:flex; flex-direction:column;
+    padding:20px 16px; position:sticky; top:0; height:100vh;
+  }
+  .side-brand{
+    font-family:"Libre Caslon Text", Georgia, serif; font-size:19px; letter-spacing:0.02em;
+    color:var(--ink); padding:4px 8px 20px; display:flex; align-items:baseline; gap:8px;
+  }
+  .side-brand .dot{color:var(--burgundy);}
+  .side-role{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); padding:0 8px 14px;}
+  .side-group-label{font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-soft); padding:16px 8px 8px;}
+  .side-link{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:7px;
+    color:var(--ink); text-decoration:none; font-size:14px; font-weight:500; cursor:pointer;
+    border:none; background:none; width:100%; text-align:left; font-family:inherit;
+  }
+  .side-link:hover{background:var(--paper);}
+  .side-link.active{background:var(--burgundy); color:#F5E9DD;}
+  .side-link .badge{
+    margin-left:auto; font-family:"IBM Plex Mono", monospace; font-size:11px;
+    background:var(--gold); color:#3B2A16; padding:1px 6px; border-radius:10px;
+  }
+  .side-link.active .badge{background:#F5E9DD; color:var(--burgundy);}
+  .sidebar-foot{margin-top:auto; border-top:1px solid var(--line); padding-top:14px; display:flex; flex-direction:column; gap:2px;}
+  .sidebar-close{display:none;}
+
+  .main{flex:1; min-width:0; display:flex; flex-direction:column;}
+  .topbar{
+    background:var(--paper-raised); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px clamp(16px,3vw,28px); flex-wrap:wrap; position:sticky; top:0; z-index:5;
+  }
+  .topbar-left{display:flex; align-items:center; gap:12px; min-width:0;}
+  .hamburger{display:none; border:1px solid var(--line); background:var(--paper); border-radius:6px; padding:7px; cursor:pointer; color:var(--ink);}
+  .breadcrumb{font-size:13px; color:var(--ink-soft); white-space:nowrap;}
+  .breadcrumb strong{color:var(--ink); font-weight:600;}
+  .user-chip{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink);}
+  .user-chip .av{
+    width:28px; height:28px; border-radius:50%; background:var(--burgundy); color:#F5E9DD;
+    display:flex; align-items:center; justify-content:center; font-family:"Libre Caslon Text", serif; font-size:12px;
+  }
+
+  .page{padding:clamp(18px,3vw,32px); max-width:880px; width:100%; margin:0 auto;}
+
+  /* ---- demo mode toggle ---- */
+  .mode-toggle{
+    display:inline-flex; border:1px solid var(--line); border-radius:20px; overflow:hidden;
+    background:var(--paper-raised); margin-bottom:18px;
+  }
+  .mode-toggle button{border:none; background:none; font-family:inherit; font-size:13px; font-weight:600; padding:7px 14px; cursor:pointer; color:var(--ink-soft);}
+  .mode-toggle button.active{background:var(--burgundy); color:#F5E9DD;}
+
+  .page-head{margin-bottom:22px;}
+  .page-head h1{font-family:"Libre Caslon Text", Georgia, serif; font-weight:400; font-size:clamp(22px,2.8vw,28px); margin:0 0 4px;}
+  .page-head p{margin:0; color:var(--ink-soft); font-size:14px;}
+
+  /* ---- form card ---- */
+  .form-card{background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:clamp(18px,3vw,28px); margin-bottom:18px;}
+  .form-card h2{
+    font-family:"Libre Caslon Text", Georgia, serif; font-weight:400; font-size:18px; margin:0 0 4px;
+  }
+  .form-card .section-sub{margin:0 0 18px; font-size:13px; color:var(--ink-soft);}
+
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  @media (max-width:640px){ .grid-2{grid-template-columns:1fr;} }
+
+  .field{display:flex; flex-direction:column; gap:6px; margin-bottom:16px;}
+  .field label{font-size:13px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:6px;}
+  .field label .opt{font-weight:400; color:var(--ink-soft); font-size:12px;}
+  .hint{font-size:12px; color:var(--ink-soft); margin-top:-2px;}
+
+  input[type=text], input[type=date], textarea, select{
+    width:100%; font-family:inherit; font-size:14.5px; padding:10px 12px;
+    border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--ink);
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+  input[readonly]{background:var(--line); color:var(--ink-soft); cursor:not-allowed;}
+  textarea{resize:vertical; min-height:80px; font-family:inherit;}
+
+  .ref-row{display:flex; align-items:center; gap:10px;}
+  .ref-row input{font-family:"IBM Plex Mono", monospace; letter-spacing:0.02em;}
+  .ref-tag{
+    font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;
+    background:var(--gold); color:#3B2A16; padding:4px 8px; border-radius:5px; white-space:nowrap;
+  }
+
+  .prio-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .prio-opt{
+    flex:1; min-width:90px; display:flex; align-items:center; justify-content:center; gap:6px;
+    border:1.5px solid var(--line); border-radius:7px; padding:9px 10px; cursor:pointer;
+    font-size:13.5px; font-weight:600; color:var(--ink-soft); background:var(--paper);
+  }
+  .prio-opt input{position:absolute; opacity:0; pointer-events:none;}
+  .prio-opt .dot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+  .prio-opt[data-p="Alta"] .dot{background:var(--burgundy);}
+  .prio-opt[data-p="Media"] .dot{background:var(--gold);}
+  .prio-opt[data-p="Baja"] .dot{background:var(--olive);}
+  .prio-opt.selected{border-color:var(--burgundy); background:#F3E3E1; color:var(--burgundy); box-shadow:inset 0 0 0 1px var(--burgundy);}
+
+  .client-combo{position:relative;}
+  .client-combo input{cursor:pointer;}
+  .client-menu{
+    position:absolute; left:0; right:0; top:calc(100% + 4px); background:var(--paper-raised);
+    border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 20px rgba(46,33,24,0.14);
+    max-height:220px; overflow-y:auto; z-index:10; display:none;
+  }
+  .client-menu.open{display:block;}
+  .client-menu .opt{padding:10px 12px; cursor:pointer; font-size:14px; border-bottom:1px solid var(--line);}
+  .client-menu .opt:last-child{border-bottom:none;}
+  .client-menu .opt:hover, .client-menu .opt.hl{background:var(--paper);}
+  .client-menu .opt .sub{display:block; font-size:12px; color:var(--ink-soft); margin-top:1px;}
+  .client-menu .new-opt{color:var(--burgundy); font-weight:600;}
+
+  .actions-row{display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;}
+  .btn-primary{
+    background:var(--burgundy); color:#F5E9DD; border:none; border-radius:6px;
+    padding:11px 20px; font-family:inherit; font-size:14.5px; font-weight:700; cursor:pointer;
+  }
+  .btn-primary:hover:not(:disabled){background:var(--burgundy-deep);}
+  .btn-primary:disabled{background:#C9BBA6; color:#8a7c66; cursor:not-allowed;}
+  .btn-primary:focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+  .btn-ghost{
+    background:none; border:1px solid var(--line); color:var(--ink); border-radius:6px;
+    padding:11px 18px; font-family:inherit; font-size:14.5px; font-weight:600; cursor:pointer;
+  }
+  .btn-ghost:hover{border-color:var(--burgundy); color:var(--burgundy);}
+
+  .footnote{font-size:12.5px; color:var(--ink-soft); line-height:1.6;}
+
+  .toast{
+    position:fixed; left:20px; bottom:20px; background:var(--ink); color:var(--paper);
+    padding:11px 16px; border-radius:7px; font-size:13px; max-width:340px; line-height:1.4;
+    box-shadow:0 6px 18px rgba(0,0,0,0.18);
+    transform:translateY(12px); opacity:0; transition:all .2s ease; pointer-events:none; z-index:20;
+  }
+  .toast.show{transform:translateY(0); opacity:1;}
+
+  .demo-note{
+    position:fixed; bottom:14px; right:14px; background:var(--ink); color:var(--paper);
+    font-size:11.5px; padding:6px 10px; border-radius:5px; opacity:0.75;
+    font-family:"IBM Plex Mono", monospace; z-index:15;
+  }
+
+  @media (max-width:900px){
+    .sidebar{
+      position:fixed; left:0; top:0; z-index:30; transform:translateX(-100%);
+      transition:transform .2s ease;
+    }
+    .sidebar.open{transform:translateX(0); box-shadow:0 0 0 100vmax rgba(46,33,24,0.35);}
+    .hamburger{display:inline-flex;}
+    .sidebar-close{display:inline-flex; margin-left:auto; border:none; background:none; color:var(--ink-soft); font-size:13px; cursor:pointer; padding:4px 8px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div style="display:flex; align-items:center;">
+      <div class="side-brand">LEX<span class="dot">·</span>CORPUS</div>
+      <button class="sidebar-close" id="sidebarClose">Cerrar ✕</button>
+    </div>
+    <div class="side-role">Vista de Abogado</div>
+
+    <nav>
+      <div class="side-group-label">Causas</div>
+      <button class="side-link active">
+        <svg class="icon" viewBox="0 0 20 20"><path d="M2.5 6.5c0-1.1.9-2 2-2h3l1.5 2h6.5c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2h-11c-1.1 0-2-.9-2-2v-8Z"/></svg>
+        Panel de causas
+        <span class="badge">10</span>
+      </button>
+      <button class="side-link">
+        <svg class="icon" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.2"/><path d="M10 6v4l2.6 2"/></svg>
+        Ver pendientes
+      </button>
+
+      <div class="side-group-label">Herramientas</div>
+      <button class="side-link">
+        <svg class="icon" viewBox="0 0 20 20"><path d="M10 3v9M6.5 6.5 10 3l3.5 3.5"/><path d="M3.5 13v2.5c0 .8.7 1.5 1.5 1.5h10c.8 0 1.5-.7 1.5-1.5V13"/></svg>
+        Importar desde Excel
+      </button>
+      <button class="side-link">
+        <svg class="icon" viewBox="0 0 20 20"><path d="M3 6.5c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v7c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2v-7Z"/><path d="M3 7.5l5.2 3.6c.5.35 1.1.35 1.6 0L15 7.5"/></svg>
+        Bandeja por confirmar
+        <span class="badge">3</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <button class="side-link">
+        <svg class="icon" viewBox="0 0 20 20"><circle cx="10" cy="7" r="3"/><path d="M4 16.5c0-2.8 2.7-4.5 6-4.5s6 1.7 6 4.5"/></svg>
+        Mi perfil
+      </button>
+      <button class="side-link">
+        <svg class="icon" viewBox="0 0 20 20"><path d="M8 3H5.5c-.8 0-1.5.7-1.5 1.5v11c0 .8.7 1.5 1.5 1.5H8"/><path d="M13 14l3.5-4L13 6M16 10H8"/></svg>
+        Cerrar sesión
+      </button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" id="hamburgerBtn" aria-label="Abrir menú">
+          <svg class="icon" viewBox="0 0 20 20"><path d="M3 6h14M3 10h14M3 14h14"/></svg>
+        </button>
+        <span class="breadcrumb">Causas / <strong id="crumbLabel">Nueva causa</strong></span>
+      </div>
+      <div class="user-chip">
+        <span class="av">EJ</span>
+        Emerson Jiménez
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="mode-toggle" id="modeToggle">
+        <button class="active" data-mode="new">Vista: Nueva causa</button>
+        <button data-mode="edit">Vista: Editar causa</button>
+      </div>
+
+      <div class="page-head">
+        <h1 id="pageTitle">Registrar causa</h1>
+        <p id="pageSub">Completa los datos para agregar una causa a tu panel. La referencia interna se genera automáticamente.</p>
+      </div>
+
+      <form id="causaForm" novalidate>
+        <div class="form-card">
+          <h2>Identificación</h2>
+          <p class="section-sub">Referencia interna de LEX-CORPUS y datos del cliente asociado.</p>
+
+          <div class="grid-2">
+            <div class="field">
+              <label for="refInterna">Referencia interna</label>
+              <div class="ref-row">
+                <input type="text" id="refInterna" readonly value="LC-0243" />
+                <span class="ref-tag">Auto</span>
+              </div>
+              <p class="hint">Uso exclusivo de LEX-CORPUS, no reemplaza el RIT del SAJ.</p>
+            </div>
+
+            <div class="field">
+              <label for="ritInput">RIT <span class="opt">(opcional al crear)</span></label>
+              <input type="text" id="ritInput" placeholder="Ej. C-1234-2026" />
+              <p class="hint">Puedes completarlo después si aún no está disponible.</p>
+            </div>
+          </div>
+
+          <div class="field client-combo">
+            <label for="clienteInput">Cliente</label>
+            <input type="text" id="clienteInput" placeholder="Buscar cliente por nombre…" autocomplete="off" value="María Elena Contreras Soto" />
+            <div class="client-menu" id="clientMenu"></div>
+            <p class="hint">Si el cliente no existe aún, puedes crearlo desde aquí mismo.</p>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <h2>Detalle de la causa</h2>
+          <p class="section-sub">Materia, tribunal y prioridad con la que aparecerá en tu panel.</p>
+
+          <div class="field">
+            <label for="detalleInput">Carátula / detalle</label>
+            <input type="text" id="detalleInput" placeholder="Ej. Pensión de alimentos" value="Pensión de alimentos" />
+          </div>
+
+          <div class="grid-2">
+            <div class="field">
+              <label for="materiaSelect">Materia</label>
+              <select id="materiaSelect">
+                <option>Familia</option>
+                <option>Laboral</option>
+                <option>Civil</option>
+                <option>Penal</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="tribunalInput">Tribunal</label>
+              <input type="text" id="tribunalInput" placeholder="Ej. 1° Juzgado de Familia de Santiago" value="1° Juzgado de Familia de Santiago" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Prioridad</label>
+            <div class="prio-row" id="prioRow">
+              <label class="prio-opt" data-p="Alta"><input type="radio" name="prioridad" value="Alta" checked /><span class="dot"></span>Alta</label>
+              <label class="prio-opt" data-p="Media"><input type="radio" name="prioridad" value="Media" /><span class="dot"></span>Media</label>
+              <label class="prio-opt" data-p="Baja"><input type="radio" name="prioridad" value="Baja" /><span class="dot"></span>Baja</label>
+            </div>
+            <p class="hint">Define el orden por defecto en el panel de causas.</p>
+          </div>
+
+          <div class="grid-2">
+            <div class="field">
+              <label for="fechaInput">Próxima fecha clave <span class="opt">(opcional)</span></label>
+              <input type="date" id="fechaInput" value="2026-09-18" />
+            </div>
+            <div class="field">
+              <label for="fechaLabelInput">Descripción de la fecha</label>
+              <input type="text" id="fechaLabelInput" placeholder="Ej. Audiencia de conciliación" value="Audiencia de conciliación" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="notasInput">Notas internas <span class="opt">(solo las ve tu equipo)</span></label>
+            <textarea id="notasInput" placeholder="Contexto relevante, acuerdos previos, observaciones…">Cliente solicita priorizar por situación económica. Demandado notificado el 02-09-2026.</textarea>
+          </div>
+        </div>
+
+        <div class="actions-row">
+          <button type="button" class="btn-ghost" id="cancelBtn">Cancelar</button>
+          <button type="submit" class="btn-primary" id="saveBtn">Guardar causa</button>
+        </div>
+      </form>
+
+      <p class="footnote" style="margin-top:18px;"><strong>HU-06, HU-07.</strong> El mismo formulario se usa para crear y editar — al editar, los campos llegan prellenados desde el panel de causas y la referencia interna ya no es editable.</p>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="demo-note">Mockup 06/13 · Registrar / Editar causa</div>
+
+<script>
+  const CLIENTES = [
+    {nombre:'María Elena Contreras Soto', causas:2},
+    {nombre:'Andrés Reyes Cárcamo', causas:1},
+    {nombre:'Jorge Salinas Muñoz', causas:1},
+    {nombre:'Pedro Vidal Ortega', causas:1},
+    {nombre:'Teresa Muñoz Ríos', causas:1},
+    {nombre:'Rosa Elgueta Paredes', causas:1},
+    {nombre:'Camila Fuentes Vera', causas:1},
+  ];
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let toastTimer;
+  function showToast(msg){
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  /* ---- demo mode toggle (new vs edit) ---- */
+  const modeToggle = document.getElementById('modeToggle');
+  const pageTitle = document.getElementById('pageTitle');
+  const pageSub = document.getElementById('pageSub');
+  const crumbLabel = document.getElementById('crumbLabel');
+  const refInterna = document.getElementById('refInterna');
+  const refTagWrap = document.querySelector('.ref-tag');
+  const saveBtn = document.getElementById('saveBtn');
+
+  modeToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mode]');
+    if(!btn) return;
+    document.querySelectorAll('#modeToggle button').forEach(b => b.classList.toggle('active', b === btn));
+    const mode = btn.dataset.mode;
+    if(mode === 'new'){
+      pageTitle.textContent = 'Registrar causa';
+      pageSub.textContent = 'Completa los datos para agregar una causa a tu panel. La referencia interna se genera automáticamente.';
+      crumbLabel.textContent = 'Nueva causa';
+      refInterna.value = 'LC-0243';
+      refTagWrap.textContent = 'Auto';
+      saveBtn.textContent = 'Guardar causa';
+    } else {
+      pageTitle.textContent = 'Editar causa';
+      pageSub.textContent = 'Estás modificando una causa existente. La referencia interna no puede cambiarse.';
+      crumbLabel.textContent = 'Editar LC-0142';
+      refInterna.value = 'LC-0142';
+      refTagWrap.textContent = 'Fija';
+      saveBtn.textContent = 'Guardar cambios';
+    }
+  });
+
+  /* ---- priority segmented radio ---- */
+  const prioRow = document.getElementById('prioRow');
+  function syncPrio(){
+    document.querySelectorAll('.prio-opt').forEach(opt => {
+      const input = opt.querySelector('input');
+      opt.classList.toggle('selected', input.checked);
+    });
+  }
+  prioRow.addEventListener('change', syncPrio);
+  syncPrio();
+
+  /* ---- client combo ---- */
+  const clienteInput = document.getElementById('clienteInput');
+  const clientMenu = document.getElementById('clientMenu');
+
+  function renderClientMenu(query){
+    const q = (query || '').toLowerCase();
+    const matches = CLIENTES.filter(c => c.nombre.toLowerCase().includes(q));
+    let html = matches.map(c => `
+      <div class="opt" data-name="${escapeHtml(c.nombre)}">
+        ${escapeHtml(c.nombre)}
+        <span class="sub">${c.causas} causa${c.causas > 1 ? 's' : ''} activa${c.causas > 1 ? 's' : ''} en tu panel</span>
+      </div>
+    `).join('');
+    if(query){
+      html += `<div class="opt new-opt" data-new="1">+ Crear cliente nuevo "${escapeHtml(query)}"</div>`;
+    }
+    clientMenu.innerHTML = html;
+  }
+
+  clienteInput.addEventListener('focus', () => {
+    renderClientMenu(clienteInput.value);
+    clientMenu.classList.add('open');
+  });
+  clienteInput.addEventListener('input', () => {
+    renderClientMenu(clienteInput.value);
+    clientMenu.classList.add('open');
+  });
+  clientMenu.addEventListener('click', (e) => {
+    const opt = e.target.closest('.opt');
+    if(!opt) return;
+    if(opt.dataset.new){
+      showToast(`Esto abría el flujo de "Crear cuenta de cliente" (CU-01) para "${clienteInput.value}".`);
+    } else {
+      clienteInput.value = opt.dataset.name;
+    }
+    clientMenu.classList.remove('open');
+  });
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('.client-combo')) clientMenu.classList.remove('open');
+  });
+
+  /* ---- form actions ---- */
+  document.getElementById('causaForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const isEdit = document.querySelector('#modeToggle button.active').dataset.mode === 'edit';
+    showToast(isEdit ? 'Cambios guardados. Esto te devolvería al detalle de la causa — mockup 07.' : 'Causa creada. Esto te llevaría al panel de causas — mockup 05.');
+  });
+  document.getElementById('cancelBtn').addEventListener('click', () => {
+    showToast('Esto descarta los cambios y vuelve al panel de causas.');
+  });
+
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('hamburgerBtn').addEventListener('click', () => sidebar.classList.add('open'));
+  document.getElementById('sidebarClose').addEventListener('click', () => sidebar.classList.remove('open'));
+</script>
+
+</body>
+</html>
