@@ -59,7 +59,14 @@ correos sueltos, lo que consume tiempo que el abogado no tiene.
          silenciosamente.
       c) PDF de citaciones (ej. invitación a audiencia preparatoria u
          otra): extracción de texto del PDF para identificar tipo de
-         audiencia, fecha y tribunal.
+         audiencia, fecha y tribunal. El texto extraído (correo, Excel y PDF)
+         es procesado mediante un servicio de IA generativa (API de Gemini,
+         modelo Flash), que devuelve los datos estructurados (tipo de
+         movimiento, fecha, tribunal) junto con un resumen en lenguaje
+         simple del contenido, orientado a que el cliente lo comprenda sin
+         conocimientos legales. En caso de que el servicio de IA no esté
+         disponible, se aplica como respaldo una extracción basada en
+         reglas y patrones de texto.
 
     Todo lo anterior cae en una bandeja de "movimientos por confirmar",
     separada del estado visible al cliente. El abogado revisa y confirma
@@ -106,6 +113,16 @@ correos sueltos, lo que consume tiempo que el abogado no tiene.
 6.3 Despliegue
     - Evaluado: desplegar todo en un mismo proveedor.
     - Proveedor final: pendiente de definir.
+
+6.4 Tecnología emergente
+
+    - El proyecto incorpora IA generativa como componente de tecnología emergente, 
+    mediante la API de Gemini (modelos Flash, tier gratuito). Su función es clasificar 
+    y extraer datos estructurados de las notificaciones del Poder Judicial (correo, 
+    Excel de movimientos, PDF de citaciones), y generar un resumen en lenguaje simple 
+    del contenido para el cliente.
+
+    - El servicio se integra detrás de una interfaz genérica en el backend, de modo que el proveedor de IA pueda reemplazarse sin afectar al resto del sistema. Como respaldo ante fallas o indisponibilidad del servicio, se mantiene una extracción basada en reglas y patrones de texto.
 
 --------------------------------------------------------------------------------
 7. DECISIONES DE GESTIÓN
