@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>LEX-CORPUS · Nueva contraseña</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#EFE7D8;
+    --paper-raised:#F8F2E6;
+    --ink:#2E2118;
+    --ink-soft:#6B5A48;
+    --burgundy:#6B1F2A;
+    --burgundy-deep:#4A121C;
+    --gold:#A87C3F;
+    --olive:#6E7A4A;
+    --line:#D9CBAE;
+    --focus:#8C2A36;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    min-height:100vh;
+  }
+  .stage{
+    width:100%;
+    min-height:100vh;
+    display:grid;
+    grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);
+  }
+  @media (max-width:800px){
+    .stage{grid-template-columns:1fr;}
+  }
+
+  .brand{
+    background:
+      radial-gradient(circle at 15% 20%, rgba(168,124,63,0.18), transparent 45%),
+      linear-gradient(160deg, var(--burgundy) 0%, var(--burgundy-deep) 100%);
+    color:#EFE1D6;
+    padding:clamp(28px,6vw,72px);
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    position:relative;
+    overflow:hidden;
+    min-height:320px;
+  }
+  .brand::after{
+    content:"";
+    position:absolute;
+    right:-10%;
+    bottom:-15%;
+    width:70%;
+    height:70%;
+    border:1px solid rgba(239,225,214,0.14);
+    border-radius:50%;
+  }
+  .brand::before{
+    content:"";
+    position:absolute;
+    right:10%;
+    bottom:5%;
+    width:46%;
+    height:46%;
+    border:1px solid rgba(239,225,214,0.1);
+    border-radius:50%;
+  }
+  .wordmark{
+    font-family:"Libre Caslon Text", Georgia, serif;
+    font-size:clamp(26px,3.2vw,34px);
+    letter-spacing:0.02em;
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    position:relative;
+    z-index:1;
+  }
+  .wordmark .dot{color:var(--gold);}
+  .brand-tag{
+    margin-top:10px;
+    font-size:14px;
+    color:#D8C4B4;
+    max-width:34ch;
+    line-height:1.5;
+    position:relative;
+    z-index:1;
+  }
+  .brand-quote{position:relative; z-index:1; max-width:30ch;}
+  .brand-quote .mark{
+    font-family:"Libre Caslon Text", Georgia, serif;
+    font-style:italic;
+    font-size:clamp(22px,3vw,28px);
+    line-height:1.35;
+    text-wrap:balance;
+    color:#F5E9DD;
+  }
+  .brand-quote .attr{
+    margin-top:10px;
+    font-size:12.5px;
+    letter-spacing:0.09em;
+    text-transform:uppercase;
+    color:var(--gold);
+  }
+  .brand-foot{
+    position:relative; z-index:1;
+    font-size:12.5px;
+    color:#C9AF9C;
+    display:flex;
+    gap:18px;
+    flex-wrap:wrap;
+  }
+
+  .panel{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:clamp(28px,6vw,64px);
+  }
+  .card{width:100%; max-width:420px;}
+
+  .step-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--burgundy);
+    background:#F3E3E1;
+    border:1px solid #D9A9A6;
+    padding:5px 10px;
+    border-radius:20px;
+    margin-bottom:16px;
+  }
+
+  .card h1{
+    font-family:"Libre Caslon Text", Georgia, serif;
+    font-weight:400;
+    font-size:26px;
+    margin:0 0 6px;
+    text-wrap:balance;
+  }
+  .card .sub{
+    margin:0 0 26px;
+    color:var(--ink-soft);
+    font-size:14.5px;
+    line-height:1.55;
+  }
+  .card .sub strong{color:var(--ink);}
+
+  .identity-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 12px;
+    margin-bottom:22px;
+    font-size:13.5px;
+  }
+  .identity-row .avatar{
+    width:30px; height:30px;
+    border-radius:50%;
+    background:var(--burgundy);
+    color:#F5E9DD;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:"Libre Caslon Text", serif;
+    font-size:13px;
+    flex:0 0 auto;
+  }
+  .identity-row .who{color:var(--ink-soft);}
+  .identity-row .who strong{display:block; color:var(--ink); font-weight:600;}
+
+  .field{display:flex; flex-direction:column; gap:6px; margin-bottom:16px;}
+  .field label{font-size:13px; font-weight:600; color:var(--ink);}
+  .input-wrap{position:relative; display:flex; align-items:center;}
+  input[type=password], input[type=text]{
+    width:100%;
+    font-family:inherit;
+    font-size:15px;
+    padding:11px 13px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:var(--paper-raised);
+    color:var(--ink);
+  }
+  input:focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+  .toggle-visibility{
+    position:absolute; right:8px;
+    background:none; border:none;
+    color:var(--ink-soft);
+    font-size:12.5px; font-weight:600;
+    cursor:pointer; padding:6px 8px; border-radius:4px;
+  }
+  .toggle-visibility:hover{color:var(--burgundy);}
+  .toggle-visibility:focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+
+  .req-list{
+    list-style:none;
+    margin:4px 0 22px;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+  }
+  .req-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:13px;
+    color:var(--ink-soft);
+    transition:color .15s ease;
+  }
+  .req-item .chk{
+    width:16px; height:16px;
+    border-radius:50%;
+    border:1.5px solid var(--line);
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:10px;
+    color:transparent;
+    transition:all .15s ease;
+  }
+  .req-item.met{color:var(--olive);}
+  .req-item.met .chk{
+    background:var(--olive);
+    border-color:var(--olive);
+    color:#F5E9DD;
+  }
+
+  .btn-primary{
+    width:100%;
+    background:var(--burgundy);
+    color:#F5E9DD;
+    border:none;
+    border-radius:6px;
+    padding:13px 16px;
+    font-family:inherit;
+    font-size:15px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .btn-primary:hover:not(:disabled){background:var(--burgundy-deep);}
+  .btn-primary:disabled{
+    background:#C9BBA6;
+    color:#8a7c66;
+    cursor:not-allowed;
+  }
+  .btn-primary:focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+
+  .mismatch{
+    font-size:12.5px;
+    color:var(--burgundy);
+    margin:-10px 0 16px;
+    display:none;
+  }
+  .mismatch.show{display:block;}
+
+  .footnote{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    line-height:1.6;
+    border-top:1px solid var(--line);
+    padding-top:16px;
+    margin-top:22px;
+  }
+
+  .demo-note{
+    position:fixed;
+    bottom:14px;
+    right:14px;
+    background:var(--ink);
+    color:var(--paper);
+    font-size:11.5px;
+    padding:6px 10px;
+    border-radius:5px;
+    opacity:0.75;
+    font-family:"IBM Plex Mono", monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <section class="brand">
+    <div class="wordmark">LEX<span class="dot">·</span>CORPUS</div>
+    <div class="brand-tag">Capa de organización y comunicación para abogados de asistencia judicial. Complementa al SAJ — no lo reemplaza.</div>
+
+    <div class="brand-quote">
+      <p class="mark">&ldquo;Nemo censetur ignorare legem.&rdquo;</p>
+      <p class="attr">Nadie puede alegar ignorancia de la ley</p>
+    </div>
+
+    <div class="brand-foot">
+      <span>Corporación de Asistencia Judicial</span>
+      <span>·</span>
+      <span>Acceso protegido</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="card">
+      <span class="step-pill">Primer ingreso</span>
+      <h1>Crea tu nueva contraseña</h1>
+      <p class="sub">Por tu seguridad, debes reemplazar la contraseña temporal antes de continuar. <strong>Este paso no se puede omitir.</strong></p>
+
+      <div class="identity-row">
+        <div class="avatar">TM</div>
+        <div class="who">Definiendo contraseña para<strong>teresa.munoz@correo.cl</strong></div>
+      </div>
+
+      <form id="changeForm" novalidate>
+        <div class="field">
+          <label for="temp">Contraseña temporal (recibida por correo)</label>
+          <div class="input-wrap">
+            <input type="password" id="temp" value="CAJ-482910" autocomplete="current-password" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="new1">Nueva contraseña</label>
+          <div class="input-wrap">
+            <input type="password" id="new1" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+            <button type="button" class="toggle-visibility" id="toggleBtn1" aria-pressed="false">Mostrar</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="new2">Confirmar nueva contraseña</label>
+          <div class="input-wrap">
+            <input type="password" id="new2" placeholder="Repite la contraseña" autocomplete="new-password" />
+            <button type="button" class="toggle-visibility" id="toggleBtn2" aria-pressed="false">Mostrar</button>
+          </div>
+        </div>
+        <p class="mismatch" id="mismatch">Las contraseñas no coinciden.</p>
+
+        <ul class="req-list" id="reqList">
+          <li class="req-item" data-rule="len"><span class="chk">✓</span> Al menos 8 caracteres</li>
+          <li class="req-item" data-rule="num"><span class="chk">✓</span> Incluye al menos un número</li>
+          <li class="req-item" data-rule="diff"><span class="chk">✓</span> Distinta a la contraseña temporal</li>
+        </ul>
+
+        <button type="submit" class="btn-primary" id="submitBtn" disabled>Guardar y continuar</button>
+      </form>
+
+      <p class="footnote">
+        <strong>HU-03.</strong> Este flujo aplica al primer acceso del cliente con contraseña genérica. El abogado sigue el mismo mecanismo si su cuenta se crea o resetea por un administrador.
+      </p>
+    </div>
+  </section>
+</div>
+
+<div class="demo-note">Mockup 02/13 · Cambio de contraseña obligatorio</div>
+
+<script>
+  const temp = document.getElementById('temp');
+  const new1 = document.getElementById('new1');
+  const new2 = document.getElementById('new2');
+  const submitBtn = document.getElementById('submitBtn');
+  const mismatch = document.getElementById('mismatch');
+
+  function wireToggle(btnId, inputEl){
+    const btn = document.getElementById(btnId);
+    btn.addEventListener('click', () => {
+      const show = inputEl.type === 'password';
+      inputEl.type = show ? 'text' : 'password';
+      btn.textContent = show ? 'Ocultar' : 'Mostrar';
+      btn.setAttribute('aria-pressed', String(show));
+    });
+  }
+  wireToggle('toggleBtn1', new1);
+  wireToggle('toggleBtn2', new2);
+
+  function evaluate(){
+    const v = new1.value;
+    const rules = {
+      len: v.length >= 8,
+      num: /\d/.test(v),
+      diff: v.length > 0 && v !== temp.value
+    };
+    document.querySelectorAll('.req-item').forEach(item => {
+      const rule = item.dataset.rule;
+      item.classList.toggle('met', !!rules[rule]);
+    });
+
+    const allMet = Object.values(rules).every(Boolean);
+    const match = new2.value.length > 0 && new1.value === new2.value;
+    mismatch.classList.toggle('show', new2.value.length > 0 && !match);
+
+    submitBtn.disabled = !(allMet && match);
+  }
+
+  new1.addEventListener('input', evaluate);
+  new2.addEventListener('input', evaluate);
+
+  document.getElementById('changeForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+  });
+</script>
+
+</body>
+</html>

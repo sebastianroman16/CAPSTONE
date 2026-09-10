@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>LEX-CORPUS · Mis causas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#EFE7D8;
+    --paper-raised:#F8F2E6;
+    --ink:#2E2118;
+    --ink-soft:#6B5A48;
+    --burgundy:#6B1F2A;
+    --burgundy-deep:#4A121C;
+    --gold:#A87C3F;
+    --olive:#6E7A4A;
+    --line:#D9CBAE;
+    --focus:#8C2A36;
+    --sidebar-w:250px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    min-height:100vh;
+  }
+  svg.icon{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto;}
+
+  .shell{display:flex; min-height:100vh;}
+  .sidebar{
+    width:var(--sidebar-w); flex:0 0 auto; background:var(--paper-raised);
+    border-right:1px solid var(--line); display:flex; flex-direction:column;
+    padding:20px 16px; position:sticky; top:0; height:100vh;
+  }
+  .side-brand{font-family:"Libre Caslon Text", Georgia, serif; font-size:19px; letter-spacing:0.02em; color:var(--ink); padding:4px 8px 20px; display:flex; align-items:baseline; gap:8px;}
+  .side-brand .dot{color:var(--burgundy);}
+  .side-role{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); padding:0 8px 14px;}
+  .side-group-label{font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-soft); padding:16px 8px 8px;}
+  .side-link{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:7px;
+    color:var(--ink); text-decoration:none; font-size:14px; font-weight:500; cursor:pointer;
+    border:none; background:none; width:100%; text-align:left; font-family:inherit;
+  }
+  .side-link:hover{background:var(--paper);}
+  .side-link.active{background:var(--burgundy); color:#F5E9DD;}
+  .side-link .badge{margin-left:auto; font-family:"IBM Plex Mono", monospace; font-size:11px; background:var(--gold); color:#3B2A16; padding:1px 6px; border-radius:10px;}
+  .side-link.active .badge{background:#F5E9DD; color:var(--burgundy);}
+  .sidebar-foot{margin-top:auto; border-top:1px solid var(--line); padding-top:14px; display:flex; flex-direction:column; gap:2px;}
+  .sidebar-close{display:none;}
+
+  .main{flex:1; min-width:0; display:flex; flex-direction:column;}
+  .topbar{
+    background:var(--paper-raised); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px clamp(16px,3vw,28px); flex-wrap:wrap; position:sticky; top:0; z-index:5;
+  }
+  .topbar-left{display:flex; align-items:center; gap:12px; min-width:0;}
+  .hamburger{display:none; border:1px solid var(--line); background:var(--paper); border-radius:6px; padding:7px; cursor:pointer; color:var(--ink);}
+  .breadcrumb{font-size:13px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .breadcrumb strong{color:var(--ink); font-weight:600;}
+  .user-chip{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink); flex:0 0 auto;}
+  .user-chip .av{width:28px; height:28px; border-radius:50%; background:var(--burgundy); color:#F5E9DD; display:flex; align-items:center; justify-content:center; font-family:"Libre Caslon Text", serif; font-size:12px;}
+
+  .page{padding:clamp(18px,3vw,32px); max-width:1080px; width:100%; margin:0 auto;}
+
+  .page-head{display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:18px;}
+  .page-head h1{font-family:"Libre Caslon Text", Georgia, serif; font-weight:400; font-size:clamp(22px,3vw,28px); margin:0 0 4px;}
+  .page-head p{margin:0; font-size:13.5px; color:var(--ink-soft);}
+
+  .toolbar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px;}
+  .seg-toggle{display:inline-flex; background:var(--paper-raised); border:1px solid var(--line); border-radius:20px; padding:3px;}
+  .seg{padding:6px 14px; border-radius:16px; font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer; border:none; background:none; font-family:inherit;}
+  .seg.active{background:var(--burgundy); color:#F5E9DD;}
+  .search-box{
+    flex:1; min-width:180px; max-width:280px; display:flex; align-items:center; gap:8px;
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:8px; padding:8px 12px;
+  }
+  .search-box input{border:none; background:none; font-family:inherit; font-size:13.5px; color:var(--ink); width:100%; outline:none;}
+  .search-box svg{color:var(--ink-soft);}
+
+  .causa-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px;}
+
+  .causa-card{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:10px;
+    padding:18px 20px; display:flex; flex-direction:column; gap:12px; cursor:pointer;
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  .causa-card:hover{border-color:var(--burgundy); box-shadow:0 3px 10px rgba(46,33,24,0.08);}
+  .cc-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .cc-materia{
+    font-size:10.5px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;
+    color:var(--ink-soft); background:var(--paper); border:1px solid var(--line); border-radius:20px;
+    padding:3px 10px;
+  }
+  .prio{display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:var(--ink-soft); white-space:nowrap;}
+  .prio .dot{width:7px; height:7px; border-radius:50%;}
+  .prio.alta .dot{background:var(--burgundy);}
+  .prio.media .dot{background:var(--gold);}
+  .prio.baja .dot{background:var(--olive);}
+
+  .cc-title{font-family:"Libre Caslon Text", Georgia, serif; font-weight:400; font-size:17px; margin:0; line-height:1.35;}
+  .cc-meta{font-size:12.5px; color:var(--ink-soft); display:flex; flex-direction:column; gap:3px;}
+  .cc-meta .mono{font-family:"IBM Plex Mono", monospace; color:var(--ink); margin-right:6px;}
+
+  .cc-status{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    padding:4px 10px; border-radius:20px; align-self:flex-start;
+  }
+  .cc-status.activa{background:#E4E9DA; color:var(--olive);}
+  .cc-status.espera{background:#F0E2C4; color:#8a6a30;}
+  .cc-status.archivada{background:var(--line); color:var(--ink-soft);}
+
+  .cc-next{
+    border-top:1px solid var(--line); padding-top:10px; margin-top:auto;
+    display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink);
+  }
+  .cc-next svg{color:var(--burgundy); flex:0 0 auto;}
+  .cc-next.none{color:var(--ink-soft);}
+  .cc-next.none svg{color:var(--ink-soft);}
+
+  .cc-foot{display:flex; justify-content:flex-end;}
+  .btn-link{
+    background:none; border:none; color:var(--burgundy); font-family:inherit; font-size:13px;
+    font-weight:700; cursor:pointer; padding:0; display:flex; align-items:center; gap:4px;
+  }
+  .causa-card:hover .btn-link{text-decoration:underline;}
+
+  .empty-state{
+    text-align:center; padding:60px 20px; color:var(--ink-soft); grid-column:1/-1;
+    background:var(--paper-raised); border:1px dashed var(--line); border-radius:10px;
+  }
+  .empty-state svg{width:40px; height:40px; margin-bottom:10px; color:var(--ink-soft);}
+  .empty-state p{margin:0; font-size:14px;}
+
+  .toast{
+    position:fixed; left:20px; bottom:20px; background:var(--ink); color:var(--paper);
+    padding:11px 16px; border-radius:7px; font-size:13px; max-width:340px; line-height:1.4;
+    box-shadow:0 6px 18px rgba(0,0,0,0.18);
+    transform:translateY(12px); opacity:0; transition:all .2s ease; pointer-events:none; z-index:20;
+  }
+  .toast.show{transform:translateY(0); opacity:1;}
+
+  .demo-note{
+    position:fixed; bottom:14px; right:14px; background:var(--ink); color:var(--paper);
+    font-size:11.5px; padding:6px 10px; border-radius:5px; opacity:0.75;
+    font-family:"IBM Plex Mono", monospace; z-index:15;
+  }
+
+  .footnote{font-size:12.5px; color:var(--ink-soft); line-height:1.6; margin-top:24px;}
+
+  @media (max-width:900px){
+    .sidebar{position:fixed; left:0; top:0; z-index:30; transform:translateX(-100%); transition:transform .2s ease;}
+    .sidebar.open{transform:translateX(0); box-shadow:0 0 0 100vmax rgba(46,33,24,0.35);}
+    .hamburger{display:inline-flex;}
+    .sidebar-close{display:inline-flex; margin-left:auto; border:none; background:none; color:var(--ink-soft); font-size:13px; cursor:pointer; padding:4px 8px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div style="display:flex; align-items:center;">
+      <div class="side-brand">LEX<span class="dot">·</span>CORPUS</div>
+      <button class="sidebar-close" id="sidebarClose">Cerrar ✕</button>
+    </div>
+    <div class="side-role">Vista de Cliente</div>
+
+    <nav>
+      <div class="side-group-label">Mis causas</div>
+      <button class="side-link active">
+        <svg class="icon" viewBox="0 0 20 20"><path d="M2.5 6.5c0-1.1.9-2 2-2h3l1.5 2h6.5c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2h-11c-1.1 0-2-.9-2-2v-8Z"/></svg>
+        Mis causas
+        <span class="badge">3</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <button class="side-link">
+        <svg class="icon" viewBox="0 0 20 20"><circle cx="10" cy="7" r="3"/><path d="M4 16.5c0-2.8 2.7-4.5 6-4.5s6 1.7 6 4.5"/></svg>
+        Mi perfil
+      </button>
+      <button class="side-link">
+        <svg class="icon" viewBox="0 0 20 20"><path d="M8 3H5.5c-.8 0-1.5.7-1.5 1.5v11c0 .8.7 1.5 1.5 1.5H8"/><path d="M13 14l3.5-4L13 6M16 10H8"/></svg>
+        Cerrar sesión
+      </button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" id="hamburgerBtn" aria-label="Abrir menú">
+          <svg class="icon" viewBox="0 0 20 20"><path d="M3 6h14M3 10h14M3 14h14"/></svg>
+        </button>
+        <span class="breadcrumb"><strong>Mis causas</strong></span>
+      </div>
+      <div class="user-chip">
+        <span class="av">MS</span>
+        María Fernanda Soto
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1>Mis causas</h1>
+          <p>Aquí puedes seguir el estado de cada una de tus causas con LEX-CORPUS.</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg-toggle" id="viewToggle">
+          <button class="seg active" data-view="activas">Activas (2)</button>
+          <button class="seg" data-view="archivadas">Archivadas (1)</button>
+        </div>
+        <div class="search-box">
+          <svg class="icon" viewBox="0 0 20 20"><circle cx="9" cy="9" r="6"/><path d="M17 17l-4-4"/></svg>
+          <input type="text" id="searchInput" placeholder="Buscar por materia o número..." />
+        </div>
+      </div>
+
+      <div class="causa-grid" id="causaGrid"></div>
+
+      <p class="footnote">Home del rol Cliente — cada cliente puede tener más de una causa vigente. Selecciona una para ver su historial, solicitudes y documentos disponibles (mockup 13).</p>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="demo-note">Mockup 12/13 · Mis causas (Cliente)</div>
+
+<script>
+  const CAUSAS = [
+    {
+      id: "LC-0142", rit: "C-2201-2025", materia: "Familia",
+      detalle: "Demanda de pensión de alimentos",
+      tribunal: "2° Juzgado de Familia de Santiago",
+      estado: "activa", estadoLabel: "En tramitación", prioridad: "alta",
+      proxima: "Audiencia de contestación · 22 de septiembre, 09:30", archivada:false
+    },
+    {
+      id: "LC-0098", rit: "T-0455-2025", materia: "Laboral",
+      detalle: "Despido injustificado",
+      tribunal: "Juzgado de Letras del Trabajo de Santiago",
+      estado: "espera", estadoLabel: "Plazo de apelación abierto", prioridad: "media",
+      proxima: "Vence plazo de apelación · 15 de septiembre", archivada:false
+    },
+    {
+      id: "LC-0075", rit: "C-1187-2024", materia: "Civil",
+      detalle: "Regularización de contrato de arriendo",
+      tribunal: "1° Juzgado Civil de Santiago",
+      estado: "archivada", estadoLabel: "Causa cerrada", prioridad: "baja",
+      proxima: null, archivada:true
+    }
+  ];
+
+  const grid = document.getElementById('causaGrid');
+  const searchInput = document.getElementById('searchInput');
+  const viewToggle = document.getElementById('viewToggle');
+  let currentView = 'activas';
+
+  const nextIconSvg = `<svg class="icon" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.2"/><path d="M10 6v4l2.6 2"/></svg>`;
+
+  function render(){
+    const q = searchInput.value.trim().toLowerCase();
+    const showArchived = currentView === 'archivadas';
+    const filtered = CAUSAS.filter(c => c.archivada === showArchived).filter(c => {
+      if(!q) return true;
+      return c.materia.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || c.detalle.toLowerCase().includes(q);
+    });
+
+    grid.innerHTML = '';
+
+    if(filtered.length === 0){
+      grid.innerHTML = `
+        <div class="empty-state">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 6.5c0-1.1.9-2 2-2h3l1.5 2h6.5c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2h-11c-1.1 0-2-.9-2-2v-8Z"/></svg>
+          <p>No encontramos causas ${showArchived ? 'archivadas' : 'activas'} que coincidan con tu búsqueda.</p>
+        </div>`;
+      return;
+    }
+
+    filtered.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'causa-card';
+      card.innerHTML = `
+        <div class="cc-top">
+          <span class="cc-materia">${c.materia}</span>
+          <span class="prio ${c.prioridad}"><span class="dot"></span>${c.prioridad === 'alta' ? 'Alta' : c.prioridad === 'media' ? 'Media' : 'Baja'} prioridad</span>
+        </div>
+        <h2 class="cc-title">${c.detalle}</h2>
+        <div class="cc-meta">
+          <div><span class="mono">${c.id}</span>RIT ${c.rit}</div>
+          <div>${c.tribunal}</div>
+        </div>
+        <span class="cc-status ${c.estado}">${c.estadoLabel}</span>
+        <div class="cc-next ${c.proxima ? '' : 'none'}">
+          ${nextIconSvg}
+          ${c.proxima ? c.proxima : 'Sin fecha próxima registrada'}
+        </div>
+        <div class="cc-foot">
+          <button class="btn-link">Ver causa
+            <svg class="icon" viewBox="0 0 20 20" style="width:13px;height:13px;"><path d="M7 4l6 6-6 6"/></svg>
+          </button>
+        </div>
+      `;
+      card.addEventListener('click', () => {
+        showToast(`Esto abriría el detalle de "${c.detalle}" (${c.id}) — mockup 13.`);
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  viewToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg');
+    if(!btn) return;
+    viewToggle.querySelectorAll('.seg').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    currentView = btn.dataset.view;
+    render();
+  });
+  searchInput.addEventListener('input', render);
+
+  let toastTimer;
+  function showToast(msg){
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+  }
+
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('hamburgerBtn').addEventListener('click', () => sidebar.classList.add('open'));
+  document.getElementById('sidebarClose').addEventListener('click', () => sidebar.classList.remove('open'));
+
+  render();
+</script>
+
+</body>
+</html>

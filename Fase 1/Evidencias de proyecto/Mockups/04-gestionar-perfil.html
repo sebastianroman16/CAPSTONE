@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>LEX-CORPUS · Mi perfil</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#EFE7D8;
+    --paper-raised:#F8F2E6;
+    --ink:#2E2118;
+    --ink-soft:#6B5A48;
+    --burgundy:#6B1F2A;
+    --burgundy-deep:#4A121C;
+    --gold:#A87C3F;
+    --olive:#6E7A4A;
+    --line:#D9CBAE;
+    --focus:#8C2A36;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    min-height:100vh;
+  }
+
+  /* ---- topbar ---- */
+  .topbar{
+    background:var(--paper-raised);
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:12px clamp(16px,4vw,32px);
+    flex-wrap:wrap;
+  }
+  .topbar-left{display:flex; align-items:center; gap:14px; min-width:0;}
+  .back{
+    color:var(--ink-soft);
+    text-decoration:none;
+    font-size:13.5px;
+    font-weight:600;
+    white-space:nowrap;
+  }
+  .back:hover{color:var(--burgundy);}
+  .breadcrumb{
+    font-size:13px;
+    color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .breadcrumb strong{color:var(--ink); font-weight:600;}
+
+  .topbar-right{display:flex; align-items:center; gap:14px;}
+  .demo-switch{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:11.5px;
+    color:var(--ink-soft);
+  }
+  .segmented{
+    display:flex;
+    border:1px solid var(--line);
+    border-radius:20px;
+    overflow:hidden;
+    background:var(--paper);
+  }
+  .segmented button{
+    border:none;
+    background:none;
+    font-family:inherit;
+    font-size:12.5px;
+    font-weight:600;
+    padding:6px 13px;
+    cursor:pointer;
+    color:var(--ink-soft);
+  }
+  .segmented button.active{background:var(--burgundy); color:#F5E9DD;}
+
+  .user-chip{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:13px;
+    color:var(--ink);
+  }
+  .user-chip .av{
+    width:28px; height:28px; border-radius:50%;
+    background:var(--burgundy); color:#F5E9DD;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"Libre Caslon Text", serif; font-size:12px;
+  }
+
+  /* ---- layout ---- */
+  .page{
+    max-width:980px;
+    margin:0 auto;
+    padding:clamp(20px,4vw,40px) clamp(16px,4vw,32px) 60px;
+  }
+  .page-head{margin-bottom:26px;}
+  .page-head h1{
+    font-family:"Libre Caslon Text", Georgia, serif;
+    font-weight:400;
+    font-size:clamp(24px,3vw,30px);
+    margin:0 0 6px;
+    text-wrap:balance;
+  }
+  .page-head p{margin:0; color:var(--ink-soft); font-size:14.5px;}
+
+  .grid{
+    display:grid;
+    grid-template-columns:260px 1fr;
+    gap:24px;
+    align-items:start;
+  }
+  @media (max-width:760px){ .grid{grid-template-columns:1fr;} }
+
+  .card{
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:22px;
+  }
+  .card + .card{margin-top:20px;}
+
+  .summary{
+    text-align:center;
+    padding:28px 20px;
+  }
+  .summary .avatar{
+    width:76px; height:76px; border-radius:50%;
+    background:var(--burgundy); color:#F5E9DD;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"Libre Caslon Text", serif; font-size:28px;
+    margin:0 auto 14px;
+  }
+  .summary h2{
+    font-family:"Libre Caslon Text", Georgia, serif;
+    font-weight:400; font-size:19px; margin:0 0 6px;
+  }
+  .role-pill{
+    display:inline-flex;
+    font-size:11.5px;
+    font-weight:700;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    padding:4px 11px;
+    border-radius:20px;
+    margin-bottom:14px;
+  }
+  .role-pill.abogado{background:#F3E3E1; color:var(--burgundy);}
+  .role-pill.cliente{background:#EAE6D3; color:#6E7A4A;}
+
+  .summary-meta{
+    text-align:left;
+    border-top:1px solid var(--line);
+    padding-top:14px;
+    margin-top:8px;
+    display:flex;
+    flex-direction:column;
+    gap:9px;
+  }
+  .summary-meta .row{display:flex; flex-direction:column; gap:2px;}
+  .summary-meta .row .k{font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em;}
+  .summary-meta .row .v{font-size:13.5px; color:var(--ink);}
+
+  .card h3{
+    font-family:"Libre Caslon Text", Georgia, serif;
+    font-weight:400;
+    font-size:18px;
+    margin:0 0 4px;
+  }
+  .card .card-sub{margin:0 0 20px; color:var(--ink-soft); font-size:13.5px;}
+
+  .form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+  }
+  @media (max-width:520px){ .form-grid{grid-template-columns:1fr;} }
+  .field{display:flex; flex-direction:column; gap:6px;}
+  .field.full{grid-column:1 / -1;}
+  .field label{font-size:13px; font-weight:600; color:var(--ink);}
+  .input-wrap{position:relative; display:flex; align-items:center;}
+  input[type=email], input[type=password], input[type=text], input[type=tel]{
+    width:100%; font-family:inherit; font-size:14.5px;
+    padding:10px 12px; border:1px solid var(--line); border-radius:6px;
+    background:var(--paper); color:var(--ink);
+  }
+  input:disabled{color:var(--ink-soft); background:#EAE1D0;}
+  input:focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+  .toggle-visibility{
+    position:absolute; right:8px; background:none; border:none;
+    color:var(--ink-soft); font-size:12px; font-weight:600;
+    cursor:pointer; padding:5px 7px; border-radius:4px;
+  }
+  .toggle-visibility:hover{color:var(--burgundy);}
+
+  .req-list{list-style:none; margin:2px 0 4px; padding:0; display:flex; flex-wrap:wrap; gap:14px;}
+  .req-item{display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); transition:color .15s ease;}
+  .req-item .chk{
+    width:15px; height:15px; border-radius:50%; border:1.5px solid var(--line);
+    flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+    font-size:9px; color:transparent; transition:all .15s ease;
+  }
+  .req-item.met{color:var(--olive);}
+  .req-item.met .chk{background:var(--olive); border-color:var(--olive); color:#F5E9DD;}
+
+  .card-foot{
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
+    gap:12px;
+    margin-top:18px;
+  }
+  .saved-note{
+    font-size:12.5px;
+    color:var(--olive);
+    display:flex;
+    align-items:center;
+    gap:5px;
+    opacity:0;
+    transition:opacity .2s ease;
+  }
+  .saved-note.show{opacity:1;}
+
+  .btn-primary{
+    background:var(--burgundy); color:#F5E9DD; border:none;
+    border-radius:6px; padding:10px 18px; font-family:inherit; font-size:14px;
+    font-weight:700; cursor:pointer;
+  }
+  .btn-primary:hover{background:var(--burgundy-deep);}
+  .btn-primary:focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+
+  .role-block{
+    border-top:1px solid var(--line);
+    margin-top:20px;
+    padding-top:18px;
+  }
+  .role-block .k{font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:10px;}
+  .stat-row{display:flex; gap:24px; flex-wrap:wrap;}
+  .stat{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:12px 16px;
+    min-width:140px;
+  }
+  .stat .num{font-family:"IBM Plex Mono", monospace; font-size:22px; font-weight:500; color:var(--burgundy);}
+  .stat .lbl{font-size:12px; color:var(--ink-soft); margin-top:2px;}
+
+  .lawyer-card{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:12px 14px;
+  }
+  .lawyer-card .av{
+    width:38px; height:38px; border-radius:50%;
+    background:var(--gold); color:#3B2A16;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"Libre Caslon Text", serif; font-size:14px;
+    flex:0 0 auto;
+  }
+  .lawyer-card .info strong{display:block; font-size:14px;}
+  .lawyer-card .info span{font-size:12.5px; color:var(--ink-soft);}
+
+  .demo-note{
+    position:fixed; bottom:14px; right:14px; background:var(--ink); color:var(--paper);
+    font-size:11.5px; padding:6px 10px; border-radius:5px; opacity:0.75;
+    font-family:"IBM Plex Mono", monospace;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <a href="#" class="back">‹ Volver</a>
+    <span class="breadcrumb">Mi cuenta / <strong>Perfil</strong></span>
+  </div>
+  <div class="topbar-right">
+    <div class="demo-switch">
+      Vista previa como
+      <div class="segmented">
+        <button type="button" class="active" id="btnAbogado">Abogado</button>
+        <button type="button" id="btnCliente">Cliente</button>
+      </div>
+    </div>
+    <div class="user-chip">
+      <span class="av" id="chipAv">EJ</span>
+      <span id="chipName">Emerson Jiménez</span>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <div class="page-head">
+    <h1>Mi perfil</h1>
+    <p>Esta vista es la misma para Abogado y Cliente: cada uno edita sus propios datos de contacto y contraseña.</p>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT: summary -->
+    <div class="card summary">
+      <div class="avatar" id="avatarBig">EJ</div>
+      <h2 id="fullName">Emerson Jiménez Loaiza</h2>
+      <span class="role-pill abogado" id="rolePill">Abogado</span>
+
+      <div class="summary-meta">
+        <div class="row"><span class="k">Correo</span><span class="v" id="metaEmail">e.jimenez@caj.cl</span></div>
+        <div class="row"><span class="k">Miembro desde</span><span class="v" id="metaSince">Marzo 2026</span></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: forms -->
+    <div>
+      <div class="card">
+        <h3>Datos de contacto</h3>
+        <p class="card-sub">Estos datos se usan para que te contactemos y para las notificaciones del sistema.</p>
+
+        <form id="contactForm" novalidate>
+          <div class="form-grid">
+            <div class="field full">
+              <label for="name">Nombre completo</label>
+              <input type="text" id="name" value="Emerson Jiménez Loaiza" disabled />
+            </div>
+            <div class="field">
+              <label for="email">Correo electrónico</label>
+              <input type="email" id="email" value="e.jimenez@caj.cl" />
+            </div>
+            <div class="field">
+              <label for="phone">Teléfono</label>
+              <input type="tel" id="phone" value="+56 9 8123 4567" />
+            </div>
+          </div>
+
+          <div class="role-block" id="roleBlockAbogado">
+            <div class="k">Información de la corporación</div>
+            <div class="stat-row">
+              <div class="stat"><div class="num">CAJ Metropolitana Sur</div><div class="lbl">Corporación asignada</div></div>
+              <div class="stat"><div class="num">14</div><div class="lbl">Causas activas</div></div>
+            </div>
+          </div>
+
+          <div class="role-block" id="roleBlockCliente" hidden>
+            <div class="k">Abogado asignado</div>
+            <div class="lawyer-card">
+              <span class="av">MI</span>
+              <div class="info">
+                <strong>María Ibáñez Contreras</strong>
+                <span>m.ibanez@caj.cl · +56 9 1122 3344</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-foot">
+            <span class="saved-note" id="savedNote1">✓ Datos guardados</span>
+            <button type="submit" class="btn-primary">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Seguridad</h3>
+        <p class="card-sub">Cambia tu contraseña ingresando primero la actual.</p>
+
+        <form id="pwdForm" novalidate>
+          <div class="form-grid">
+            <div class="field full">
+              <label for="current">Contraseña actual</label>
+              <div class="input-wrap">
+                <input type="password" id="current" placeholder="Tu contraseña actual" autocomplete="current-password" />
+                <button type="button" class="toggle-visibility" id="toggleCurrent">Mostrar</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="new1">Nueva contraseña</label>
+              <div class="input-wrap">
+                <input type="password" id="new1" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+                <button type="button" class="toggle-visibility" id="toggleNew1">Mostrar</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="new2">Confirmar nueva contraseña</label>
+              <div class="input-wrap">
+                <input type="password" id="new2" placeholder="Repite la contraseña" autocomplete="new-password" />
+                <button type="button" class="toggle-visibility" id="toggleNew2">Mostrar</button>
+              </div>
+            </div>
+          </div>
+
+          <ul class="req-list" id="reqList" style="margin-top:14px;">
+            <li class="req-item" data-rule="len"><span class="chk">✓</span> Al menos 8 caracteres</li>
+            <li class="req-item" data-rule="num"><span class="chk">✓</span> Incluye al menos un número</li>
+            <li class="req-item" data-rule="match"><span class="chk">✓</span> Ambas contraseñas coinciden</li>
+          </ul>
+
+          <div class="card-foot">
+            <span class="saved-note" id="savedNote2">✓ Contraseña actualizada</span>
+            <button type="submit" class="btn-primary" id="pwdSubmit" disabled>Guardar contraseña</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="demo-note">Mockup 04/13 · Gestionar perfil (vista compartida)</div>
+
+<script>
+  const profiles = {
+    abogado: {
+      initials:'EJ', name:'Emerson Jiménez Loaiza', email:'e.jimenez@caj.cl', phone:'+56 9 8123 4567',
+      since:'Marzo 2026', roleLabel:'Abogado', roleClass:'abogado'
+    },
+    cliente: {
+      initials:'TM', name:'Teresa Muñoz Ríos', email:'t.munoz@correo.cl', phone:'+56 9 5566 7788',
+      since:'Agosto 2026', roleLabel:'Cliente', roleClass:'cliente'
+    }
+  };
+
+  const btnAbogado = document.getElementById('btnAbogado');
+  const btnCliente = document.getElementById('btnCliente');
+  const rolePill = document.getElementById('rolePill');
+
+  function applyProfile(role){
+    const p = profiles[role];
+    document.getElementById('avatarBig').textContent = p.initials;
+    document.getElementById('chipAv').textContent = p.initials;
+    document.getElementById('chipName').textContent = p.name.split(' ').slice(0,2).join(' ');
+    document.getElementById('fullName').textContent = p.name;
+    document.getElementById('metaEmail').textContent = p.email;
+    document.getElementById('metaSince').textContent = p.since;
+    document.getElementById('name').value = p.name;
+    document.getElementById('email').value = p.email;
+    document.getElementById('phone').value = p.phone;
+
+    rolePill.textContent = p.roleLabel;
+    rolePill.className = 'role-pill ' + p.roleClass;
+
+    document.getElementById('roleBlockAbogado').hidden = role !== 'abogado';
+    document.getElementById('roleBlockCliente').hidden = role !== 'cliente';
+
+    btnAbogado.classList.toggle('active', role === 'abogado');
+    btnCliente.classList.toggle('active', role === 'cliente');
+
+    document.getElementById('savedNote1').classList.remove('show');
+    document.getElementById('savedNote2').classList.remove('show');
+  }
+
+  btnAbogado.addEventListener('click', () => applyProfile('abogado'));
+  btnCliente.addEventListener('click', () => applyProfile('cliente'));
+
+  document.getElementById('contactForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const note = document.getElementById('savedNote1');
+    note.classList.add('show');
+    setTimeout(() => note.classList.remove('show'), 2600);
+  });
+
+  function wireToggle(btnId, inputEl){
+    const btn = document.getElementById(btnId);
+    btn.addEventListener('click', () => {
+      const show = inputEl.type === 'password';
+      inputEl.type = show ? 'text' : 'password';
+      btn.textContent = show ? 'Ocultar' : 'Mostrar';
+    });
+  }
+  wireToggle('toggleCurrent', document.getElementById('current'));
+  wireToggle('toggleNew1', document.getElementById('new1'));
+  wireToggle('toggleNew2', document.getElementById('new2'));
+
+  const current = document.getElementById('current');
+  const new1 = document.getElementById('new1');
+  const new2 = document.getElementById('new2');
+  const pwdSubmit = document.getElementById('pwdSubmit');
+
+  function evaluatePwd(){
+    const v = new1.value;
+    const rules = {
+      len: v.length >= 8,
+      num: /\d/.test(v),
+      match: v.length > 0 && v === new2.value
+    };
+    document.querySelectorAll('#reqList .req-item').forEach(item => {
+      item.classList.toggle('met', !!rules[item.dataset.rule]);
+    });
+    pwdSubmit.disabled = !(Object.values(rules).every(Boolean) && current.value.length > 0);
+  }
+  [current, new1, new2].forEach(el => el.addEventListener('input', evaluatePwd));
+
+  document.getElementById('pwdForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const note = document.getElementById('savedNote2');
+    note.classList.add('show');
+    current.value = ''; new1.value = ''; new2.value = '';
+    pwdSubmit.disabled = true;
+    document.querySelectorAll('#reqList .req-item').forEach(item => item.classList.remove('met'));
+    setTimeout(() => note.classList.remove('show'), 2600);
+  });
+</script>
+
+</body>
+</html>
