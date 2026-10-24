@@ -16,22 +16,24 @@ Fuente de verdad del esquema: `../Sistema Aplicacion/lex-corpus-backend/migratio
 
 ```mermaid
 erDiagram
-  USERS ||--o{ SESSIONS : "inicia"
-  USERS ||--o{ LAWYER_CLIENT_ASSIGNMENTS : "abogado"
-  USERS ||--o{ LAWYER_CLIENT_ASSIGNMENTS : "cliente"
-  USERS ||--o{ CASES : "abogado responsable"
-  USERS ||--o{ CASES : "cliente asociado"
-  USERS ||--o{ CASE_IMPORT_BATCHES : "importa"
-  CASES ||--o{ CASE_PARTICIPANTS : "incluye"
-  USERS ||--o{ CASE_PARTICIPANTS : "participa"
-  CASES ||--o{ CASE_STATUS_HISTORY : "cambia estado"
-  CASES ||--o{ CASE_PROGRESS_EVENTS : "registra avance"
-  CASES ||--o{ CASE_DEADLINES : "agenda"
-  CASES ||--o{ DOCUMENTS : "contiene"
-  DOCUMENTS ||--|{ DOCUMENT_VERSIONS : "versiona"
-  CASES ||--o{ DOCUMENT_REQUESTS : "solicita"
-  USERS ||--o{ NOTIFICATIONS : "recibe"
+  USUARIOS ||--o{ SESIONES : "inicia"
+  USUARIOS ||--o{ ASIGNACIONES_ABOGADO_CLIENTE : "abogado"
+  USUARIOS ||--o{ ASIGNACIONES_ABOGADO_CLIENTE : "cliente"
+  USUARIOS ||--o{ CAUSAS : "abogado responsable"
+  USUARIOS ||--o{ CAUSAS : "cliente asociado"
+  USUARIOS ||--o{ LOTES_IMPORTACION_CAUSAS : "importa"
+  CAUSAS ||--o{ PARTICIPANTES_CAUSA : "incluye"
+  USUARIOS ||--o{ PARTICIPANTES_CAUSA : "participa"
+  CAUSAS ||--o{ HISTORIAL_ESTADOS_CAUSA : "cambia estado"
+  CAUSAS ||--o{ AVANCES_CAUSA : "registra avance"
+  CAUSAS ||--o{ PLAZOS_CAUSA : "agenda"
+  CAUSAS ||--o{ DOCUMENTOS : "contiene"
+  DOCUMENTOS ||--|{ VERSIONES_DOCUMENTO : "versiona"
+  CAUSAS ||--o{ SOLICITUDES_DOCUMENTOS : "solicita"
+  USUARIOS ||--o{ NOTIFICACIONES : "recibe"
 ```
+
+El diagrama utiliza nombres en español para facilitar su presentación. En las migraciones y en PostgreSQL las tablas conservan sus identificadores técnicos en inglés.
 
 La migración `004_domain_hardening.sql` lleva el modelo inicial a 14 tablas funcionales. Conserva el abogado y cliente principal en `cases` para no romper la aplicación, pero añade `lawyer_client_assignments` con historial temporal y `case_participants` para colaboradores u observadores.
 
