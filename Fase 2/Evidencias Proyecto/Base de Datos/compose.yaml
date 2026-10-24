@@ -1,0 +1,19 @@
+name: lex-corpus
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: lex_corpus
+      POSTGRES_USER: lex_corpus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en tu entorno local}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - lex_corpus_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lex_corpus -d lex_corpus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  lex_corpus_data:
