@@ -1,0 +1,102 @@
+<div class="page-head client-portfolio-head">
+  <div>
+    <p class="eyebrow">Relaciones</p>
+    <h1>Mi cartera de clientes</h1>
+    <p class="muted">Consulta los clientes vinculados a tu cuenta y sus causas.</p>
+  </div>
+  <a class="button primary" routerLink="/causas/nueva">Nueva causa</a>
+</div>
+
+@if (error()) {
+  <div class="error" role="alert">
+    {{ error() }}
+    <button class="text-button" type="button" (click)="load()">Reintentar</button>
+  </div>
+} @else if (loading()) {
+  <p class="card" role="status">Cargando tu cartera de clientes…</p>
+} @else {
+  <div class="stats client-portfolio-stats" aria-label="Resumen de la cartera">
+    <div class="stat">
+      <span>Clientes</span>
+      <strong>{{ clients().length }}</strong>
+      <small>Asignados a tu cuenta</small>
+    </div>
+    <div class="stat">
+      <span>Causas activas</span>
+      <strong>{{ activeCases() }}</strong>
+      <small>En toda tu cartera</small>
+    </div>
+    <div class="stat">
+      <span>Próximas fechas</span>
+      <strong>{{ upcomingCases() }}</strong>
+      <small>Causas activas con fecha</small>
+    </div>
+  </div>
+
+  <section class="card client-portfolio-search" aria-label="Buscar clientes">
+    <div class="field">
+      <label for="client-portfolio-search">Buscar en la cartera</label>
+      <input
+        id="client-portfolio-search"
+        type="search"
+        placeholder="Nombre, correo, causa, referencia o RIT…"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+      />
+    </div>
+    <span role="status">{{ filtered().length }} {{ filtered().length === 1 ? 'cliente' : 'clientes' }}</span>
+  </section>
+
+  <div class="portfolio-grid">
+    @for (client of filtered(); track client.id) {
+      <article class="portfolio-card">
+        <header>
+          <span class="portfolio-avatar" aria-hidden="true">{{ client.name.slice(0, 1) }}</span>
+          <div>
+            <h2>{{ client.name }}</h2>
+            <a [href]="'mailto:' + client.email">{{ client.email }}</a>
+          </div>
+        </header>
+
+        <dl class="portfolio-summary">
+          <div>
+            <dt>Activas</dt>
+            <dd>{{ client.activeCases }}</dd>
+          </div>
+          <div>
+            <dt>Archivadas</dt>
+            <dd>{{ client.archivedCases }}</dd>
+          </div>
+          <div>
+            <dt>Próxima fecha</dt>
+            <dd>{{ client.nextDate ? (client.nextDate | date:'dd/MM/yyyy') : 'Sin fecha' }}</dd>
+          </div>
+        </dl>
+
+        @if (client.cases.length) {
+          <details class="portfolio-cases">
+            <summary>Ver {{ client.cases.length }} {{ client.cases.length === 1 ? 'causa' : 'causas' }}</summary>
+            <ul>
+              @for (item of client.cases; track item.id) {
+                <li>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ item.reference }} · {{ item.status }}</span>
+                  </div>
+                  <a [routerLink]="['/causas', item.id]" [attr.aria-label]="'Abrir causa ' + item.reference">Abrir</a>
+                </li>
+              }
+            </ul>
+          </details>
+        } @else {
+          <p class="portfolio-no-cases">Este cliente aún no tiene causas registradas.</p>
+        }
+      </article>
+    } @empty {
+      <section class="card empty portfolio-empty">
+        <h2>{{ clients().length ? 'No hay coincidencias' : 'Aún no tienes clientes asignados' }}</h2>
+        <p>{{ clients().length ? 'Prueba con otro nombre, correo o causa.' : 'Los clientes vinculados a tu cuenta aparecerán aquí.' }}</p>
+      </section>
+    }
+  </div>
+}
