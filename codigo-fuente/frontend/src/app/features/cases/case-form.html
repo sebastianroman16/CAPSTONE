@@ -1,0 +1,228 @@
+<a class="back-link" routerLink="/causas">← Volver al panel</a>
+<div class="page-head">
+  <div>
+    <h1>{{ id ? 'Editar causa' : 'Registrar causa' }}</h1>
+    <p class="muted">Completa los datos de la causa y su cliente asociado.</p>
+  </div>
+</div>
+@if (error()) {
+<div class="error" role="alert">
+  {{ error() }} @if (loadError()) {
+  <button class="text-button" (click)="load()">Reintentar</button> }
+</div>
+} @if (conflict()) {
+<section class="conflict-panel" aria-labelledby="conflict-title">
+  <h2 id="conflict-title" tabindex="-1">
+    La causa cambió en otra pestaña o sesión
+  </h2>
+  <p>
+    Tu guardado no se aplicó. Conservamos lo que escribiste en este formulario
+    para que puedas revisarlo.
+  </p>
+  @if (reviewBusy()) {
+  <p role="status">Consultando los datos más recientes…</p>
+  } @if (reviewError()) {
+  <p class="error" role="alert">{{ reviewError() }}</p>
+  } @if (latest(); as saved) {
+  <p class="muted">
+    Estado guardado: {{ saved.status }}. Compara tus datos antes de
+    descartarlos.
+  </p>
+  <div class="table-scroll">
+    <table class="conflict-table">
+      <caption class="sr-only">
+        Comparación de tu formulario con los datos guardados
+      </caption>
+      <thead>
+        <tr>
+          <th>Campo</th>
+          <th>Lo que escribiste</th>
+          <th>Guardado en la causa</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (difference of differences(); track difference.label) {
+        <tr>
+          <th scope="row">{{ difference.label }}</th>
+          <td>{{ difference.local }}</td>
+          <td>{{ difference.saved }}</td>
+        </tr>
+        } @empty {
+        <tr>
+          <td colspan="3">
+            Los campos del formulario coinciden. Puede haber cambiado el estado
+            de archivo o haberse guardado de nuevo.
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class="footnote">
+    Puedes copiar tus cambios antes de cargar los datos guardados. No se
+    combinan ni se sobrescriben automáticamente.
+  </p>
+  }
+  <div class="conflict-actions">
+    <button
+      type="button"
+      class="button"
+      (click)="reviewLatest()"
+      [disabled]="reviewBusy()"
+    >
+      Consultar de nuevo
+    </button>
+    @if (latest() && !discardConfirm()) {
+    <button
+      type="button"
+      class="button"
+      (click)="discardConfirm.set(true)"
+      [disabled]="reviewBusy()"
+    >
+      Cargar datos guardados
+    </button>
+    } @if (discardConfirm()) {
+    <p>Esto reemplazará lo que escribiste en el formulario.</p>
+    <button type="button" class="button" (click)="discardConfirm.set(false)">
+      Conservar mi formulario
+    </button>
+    <button
+      type="button"
+      class="button primary"
+      (click)="useLatest()"
+      [disabled]="reviewBusy()"
+    >
+      Descartar mis cambios y cargar
+    </button>
+    }
+  </div>
+</section>
+} @if (loading()) {
+<p role="status">Cargando formulario…</p>
+} @else if (!loadError()) {
+<form [formGroup]="form" (ngSubmit)="submit()" class="case-form">
+  <section class="card">
+    <h2>Identificación</h2>
+    <p class="muted">Referencia interna y cliente de la causa.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="reference">Referencia interna</label
+        ><input id="reference" [value]="reference()" readonly /><small
+          >No reemplaza el RIT del SAJ.</small
+        >
+      </div>
+      <div class="field">
+        <label for="rit">RIT <span class="muted">(opcional)</span></label
+        ><input
+          id="rit"
+          formControlName="rit"
+          placeholder="Ej. C-1234-2026"
+          maxlength="50"
+        />
+      </div>
+    </div>
+    <div class="field">
+      <label for="client">Cliente</label
+      ><select id="client" formControlName="clientId">
+        <option value="">Selecciona un cliente</option>
+        @for (client of clients(); track client.id) {
+        <option [value]="client.id">{{ client.name }}</option>
+        }</select
+      >@if (!clients().length) {
+      <small
+        >No hay clientes asociados a tu cuenta. Solicita su alta al
+        administrador.</small
+      >
+      }
+    </div>
+  </section>
+  <section class="card">
+    <h2>Detalle de la causa</h2>
+    <p class="muted">Materia, tribunal y prioridad en tu panel.</p>
+    <div class="field">
+      <label for="title">Carátula / detalle</label
+      ><input
+        id="title"
+        formControlName="title"
+        placeholder="Ej. Pensión de alimentos"
+        maxlength="200"
+      />
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label for="case-matter">Materia</label
+        ><select id="case-matter" formControlName="matter">
+          <option>Familia</option>
+          <option>Laboral</option>
+          <option>Civil</option>
+          <option>Penal</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="court">Tribunal</label
+        ><input
+          id="court"
+          formControlName="court"
+          placeholder="Nombre del tribunal"
+          maxlength="200"
+        />
+      </div>
+    </div>
+    <fieldset class="priority-options">
+      <legend>Prioridad</legend>
+      @for (priority of ['Alta','Media','Baja']; track priority) {
+      <label
+        ><input type="radio" formControlName="priority" [value]="priority" />{{
+        priority }}</label
+      >
+      }
+    </fieldset>
+    <div class="grid-2">
+      <div class="field">
+        <label for="date"
+          >Próxima fecha clave <span class="muted">(opcional)</span></label
+        ><input id="date" type="date" formControlName="nextDate" />
+      </div>
+      <div class="field">
+        <label for="date-label">Descripción de la fecha</label
+        ><input
+          id="date-label"
+          formControlName="nextDateLabel"
+          placeholder="Ej. Audiencia de conciliación"
+          maxlength="200"
+        />
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notas internas</label
+      ><textarea
+        id="notes"
+        rows="4"
+        formControlName="internalNotes"
+        placeholder="Contexto y observaciones de uso interno…"
+        maxlength="5000"
+      ></textarea
+      ><small>Solo visibles para el abogado responsable.</small>
+    </div>
+  </section>
+  @if (form.touched && form.invalid) {
+  <p class="error" role="alert">
+    Revisa los campos: cliente, materia y prioridad son obligatorios; carátula y
+    tribunal requieren al menos 3 caracteres.
+  </p>
+  }
+  <div class="form-actions">
+    @if (form.dirty) {
+    <span class="draft-status" role="status">Cambios sin guardar</span> }
+    <a class="button" [routerLink]="id ? ['/causas',id] : ['/causas']"
+      >Cancelar</a
+    ><button
+      class="button primary"
+      type="submit"
+      [disabled]="busy() || conflict() || !clients().length"
+    >
+      {{ busy() ? 'Guardando…' : id ? 'Guardar cambios' : 'Guardar causa' }}
+    </button>
+  </div>
+</form>
+}

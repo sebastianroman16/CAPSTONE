@@ -1,0 +1,219 @@
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Coordinación jurídica · Solo lectura</p>
+    <h1>Supervisión de causas</h1>
+    <p class="muted">
+      Consulta la carga de cada abogado y los avances que registra en sus
+      causas.
+    </p>
+  </div>
+  <button class="button" (click)="load()" [disabled]="loading()">
+    Actualizar panel
+  </button>
+</div>
+@if (loading()) {
+<p role="status">Consultando el equipo y sus causas…</p>
+} @if (error()) {
+<div class="error" role="alert">
+  {{error()}} <button class="text-button" (click)="load()">Reintentar</button>
+</div>
+} @if (data(); as d) { @if (!loading() && !error()) {
+<section aria-labelledby="summary-title">
+  <h2 id="summary-title">Resumen general del equipo</h2>
+  <p class="footnote">
+    Todas las causas, independientemente de los filtros. Consultado el {{d.asOf
+    | date:'dd/MM/yyyy HH:mm'}}.
+  </p>
+  <div class="stats supervision-stats">
+    <div class="stat">
+      <span>Causas activas</span><strong>{{d.summary.active}}</strong
+      ><small>{{d.summary.total}} causas en total</small>
+    </div>
+    <div class="stat">
+      <span>Revisar seguimiento</span
+      ><strong>{{d.summary.needsAttention}}</strong
+      ><small>Sin avance o sin actualización reciente</small>
+    </div>
+    <div class="stat">
+      <span>Prioridad alta</span><strong>{{d.summary.highPriority}}</strong
+      ><small>En causas activas</small>
+    </div>
+    <div class="stat">
+      <span>Causas archivadas</span><strong>{{d.summary.archived}}</strong
+      ><small>Archivar no significa finalizar la gestión</small>
+    </div>
+  </div>
+</section>
+<section class="card" aria-labelledby="team-title">
+  <h2 id="team-title">Seguimiento por abogado</h2>
+  <p class="muted">
+    Selecciona un abogado para filtrar las causas. Se incluyen cuentas inactivas
+    con su estado.
+  </p>
+  <div class="lawyer-grid">
+    @for (lawyer of d.lawyers; track lawyer.id) {
+    <button
+      class="lawyer-summary"
+      [class.selected]="lawyerId===lawyer.id"
+      (click)="selectLawyer(lawyer.id)"
+      [attr.aria-pressed]="lawyerId===lawyer.id"
+    >
+      <strong>{{lawyer.name}}</strong>
+      @if (!lawyer.accountActive) {
+      <span class="badge high">Cuenta inactiva</span> }
+      <span>{{lawyer.active}} activas · {{lawyer.archived}} archivadas</span>
+      <span>{{lawyer.needsAttention}} para revisar seguimiento</span>
+      <small
+        >{{lawyer.total}} en total · {{lawyer.completed}} con gestión
+        finalizada</small
+      >
+    </button>
+    } @empty {
+    <p>No hay abogados registrados.</p>
+    }
+  </div>
+</section>
+} }
+<form
+  class="card filters supervision-filters"
+  (ngSubmit)="apply()"
+  aria-label="Filtrar causas del equipo"
+>
+  <div class="field search-field">
+    <label for="supervision-search">Buscar causa, cliente o abogado</label
+    ><input
+      id="supervision-search"
+      name="query"
+      type="search"
+      [(ngModel)]="query"
+      maxlength="200"
+      placeholder="Referencia, RIT o nombre"
+    />
+  </div>
+  <div class="field">
+    <label for="supervision-lawyer">Abogado</label
+    ><select id="supervision-lawyer" name="lawyer" [(ngModel)]="lawyerId">
+      <option value="">Todos</option>
+      @for(l of data()?.lawyers ?? []; track l.id) {
+      <option [value]="l.id">{{l.name}}</option>
+      }
+    </select>
+  </div>
+  <div class="field">
+    <label for="supervision-status">Estado</label
+    ><select id="supervision-status" name="status" [(ngModel)]="status">
+      <option value="">Todos</option>
+      <option>Activa</option>
+      <option>Archivada</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="supervision-stage">Etapa de gestión</label
+    ><select id="supervision-stage" name="stage" [(ngModel)]="stage">
+      <option value="">Todas</option>
+      @for(s of stages;track s.value){
+      <option [value]="s.value">{{s.label}}</option>
+      }
+    </select>
+  </div>
+  <div class="field">
+    <label for="supervision-attention">Seguimiento</label
+    ><select
+      id="supervision-attention"
+      name="attention"
+      [(ngModel)]="attention"
+    >
+      <option value="">Todas las causas</option>
+      <option value="needed">Necesita revisión</option>
+    </select>
+  </div>
+  <button class="button primary" type="submit" [disabled]="loading()">
+    Aplicar filtros</button
+  ><button class="text-button" type="button" (click)="reset()">Limpiar</button>
+</form>
+<p class="footnote supervision-note">
+  “Revisar seguimiento” señala causas activas sin avance informado o cuyo último
+  avance supera 14 días, salvo las marcadas con gestión finalizada. Es una señal
+  de gestión interna; no indica un plazo judicial vencido ni mide el desempeño
+  del abogado.
+</p>
+@if (data(); as d) { @if (!loading() && !error()) {
+<section class="table-card" aria-label="Resultados de supervisión">
+  <div class="table-scroll">
+    <table class="supervision-table">
+      <caption class="sr-only">
+        Causas del equipo según los filtros aplicados
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Causa y responsable</th>
+          <th scope="col">Etapa y último avance</th>
+          <th scope="col">Próxima acción</th>
+          <th scope="col">Seguimiento</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for(c of d.items;track c.id){
+        <tr>
+          <td>
+            <small class="mono">{{c.reference}} · {{c.rit || 'Sin RIT'}}</small
+            ><a class="case-title" [routerLink]="['/supervision/causas',c.id]"
+              >{{c.title}}</a
+            ><small>{{c.lawyerName}}</small
+            ><small>Cliente: {{c.clientName}}</small
+            ><span class="badge">{{c.status}}</span>
+          </td>
+          <td>
+            <strong>{{stageLabel(c.progressStage)}}</strong>
+            <p class="summary-excerpt">
+              {{c.progressSummary || 'El abogado aún no registra un avance.'}}
+            </p>
+            <small
+              >{{c.progressUpdatedAt ? (c.progressUpdatedAt | date:'dd/MM/yyyy
+              HH:mm') : 'Sin fecha de avance'}}</small
+            >
+          </td>
+          <td>
+            <p class="summary-excerpt">
+              {{c.nextAction || 'Sin próxima acción registrada'}}
+            </p>
+            <small
+              >Fecha clave: {{c.nextDate ? (c.nextDate | date:'dd/MM/yyyy') :
+              'Sin fecha'}}</small
+            >
+          </td>
+          <td>
+            <span class="badge" [class.high]="c.needsAttention"
+              >{{c.needsAttention ? 'Revisar seguimiento' : c.status ===
+              'Archivada' ? 'Archivada' : c.progressStage === 'COMPLETED' ?
+              'Gestión finalizada' : 'Avance reciente'}}</span
+            ><small>Prioridad {{c.priority.toLowerCase()}}</small>
+          </td>
+        </tr>
+        } @empty {
+        <tr>
+          <td colspan="4" class="empty">
+            <h2>No hay causas con estos filtros</h2>
+            <p>Prueba otro abogado o amplía el estado de la búsqueda.</p>
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    <span>{{d.total}} resultados · Página {{d.page}}</span>
+    <div>
+      <button class="button" (click)="go(d.page-1)" [disabled]="d.page<=1">
+        Anterior</button
+      ><button
+        class="button"
+        (click)="go(d.page+1)"
+        [disabled]="d.page*d.pageSize>=d.total"
+      >
+        Siguiente
+      </button>
+    </div>
+  </div>
+</section>
+} }

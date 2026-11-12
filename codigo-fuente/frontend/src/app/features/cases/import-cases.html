@@ -1,0 +1,236 @@
+<div class="page-head import-head">
+  <div>
+    <p class="eyebrow">Herramientas</p>
+    <h1>Importar causas desde Excel</h1>
+    <p class="muted">
+      Sube una planilla para incorporar varias causas a tu panel de forma segura.
+    </p>
+  </div>
+  <a
+    class="button"
+    href="/plantilla-importacion-causas-v2.xlsx"
+    download="plantilla-importacion-causas-v2.xlsx"
+  >
+    Descargar plantilla
+  </a>
+</div>
+
+<ol class="import-stepper" aria-label="Progreso de la importación">
+  <li [class.active]="step() === 1" [class.done]="step() > 1">
+    <span>1</span><strong>Subir archivo</strong>
+  </li>
+  <li class="step-rule" aria-hidden="true"></li>
+  <li [class.active]="step() === 2" [class.done]="step() > 2">
+    <span>2</span><strong>Mapear columnas</strong>
+  </li>
+  <li class="step-rule" aria-hidden="true"></li>
+  <li [class.active]="step() === 3">
+    <span>3</span><strong>Previsualizar y confirmar</strong>
+  </li>
+</ol>
+
+@if (error()) {
+  <div class="error" role="alert">{{ error() }}</div>
+}
+
+@if (step() === 1) {
+  <section class="card import-card">
+    <h2>Sube tu planilla</h2>
+    <p class="section-sub">
+      Formato aceptado: .xlsx sin macros. La primera fila debe contener los
+      encabezados y puedes importar hasta 500 causas.
+    </p>
+    <input
+      #fileInput
+      class="sr-only"
+      type="file"
+      accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      (change)="fileSelected($event)"
+    />
+    <button
+      class="dropzone"
+      type="button"
+      [class.dragging]="dragging()"
+      (click)="pickFile()"
+      (dragover)="dragOver($event)"
+      (dragleave)="dragging.set(false)"
+      (drop)="dropped($event)"
+    >
+      <span class="drop-title">Arrastra tu archivo aquí o haz clic para elegirlo</span>
+      <span>Máximo 5 MB por archivo</span>
+    </button>
+    @if (file(); as selected) {
+      <div class="file-chip">
+        <div>
+          <strong>{{ selected.name }}</strong>
+          <span>{{ formatBytes(selected.size) }} · Listo para revisar</span>
+        </div>
+        <button class="text-button" type="button" (click)="removeFile()">
+          Quitar
+        </button>
+      </div>
+    }
+    <div class="template-note">
+      <strong>¿Primera importación?</strong>
+      Usa la plantilla para conservar los nombres y formatos recomendados.
+    </div>
+  </section>
+  <div class="import-actions end">
+    <button
+      class="button primary"
+      type="button"
+      [disabled]="!file() || busy()"
+      (click)="upload()"
+    >
+      {{ busy() ? "Leyendo planilla…" : "Continuar" }}
+    </button>
+  </div>
+}
+
+@if (step() === 2 && batch(); as current) {
+  <section class="card import-card">
+    <h2>Mapea las columnas</h2>
+    <p class="section-sub">
+      Indica qué campo corresponde a cada columna. Detectamos automáticamente las
+      coincidencias más probables.
+    </p>
+    <div class="file-summary">
+      <strong>{{ current.filename }}</strong>
+      <span>{{ current.totalRows }} filas · Hoja “{{ current.worksheet }}”</span>
+    </div>
+    <div class="table-scroll">
+      <table class="mapping-table">
+        <thead>
+          <tr>
+            <th>Columna en tu planilla</th>
+            <th>Ejemplo</th>
+            <th>Campo en LEX-CORPUS</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (header of current.headers; track $index; let column = $index) {
+            <tr>
+              <td><strong>{{ header }}</strong></td>
+              <td class="sample">{{ current.samples[column] || "Sin ejemplo" }}</td>
+              <td>
+                <select
+                  [ngModel]="assignments()[column]"
+                  (ngModelChange)="assign(column, $event)"
+                  [attr.aria-label]="'Asignar columna ' + header"
+                >
+                  <option [ngValue]="null">Sin asignar</option>
+                  @for (field of fields; track field.value) {
+                    <option [ngValue]="field.value">
+                      {{ field.label }}{{ field.required ? " *" : "" }}
+                    </option>
+                  }
+                </select>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="footnote mapping-help">
+      <span class="required">*</span> Campos obligatorios. El correo debe
+      identificar un cliente activo de tu cartera; la importación nunca crea
+      clientes ni asigna causas a otro abogado.
+    </p>
+  </section>
+  <div class="import-actions">
+    <button class="button" type="button" (click)="step.set(1)">Atrás</button>
+    <button
+      class="button primary"
+      type="button"
+      [disabled]="!mappingComplete() || busy()"
+      (click)="validate()"
+    >
+      {{ busy() ? "Validando filas…" : "Continuar" }}
+    </button>
+  </div>
+}
+
+@if (step() === 3 && preview(); as result) {
+  @if (imported() === null) {
+    <section class="card import-card">
+      <h2>Previsualiza antes de confirmar</h2>
+      <p class="section-sub">
+        Revisamos la planilla contra tu cartera actual. Las filas con errores o
+        duplicadas se omitirán.
+      </p>
+      <div class="summary-chips" aria-label="Resumen de validación">
+        <span class="summary-chip valid"><i></i>{{ result.summary.valid }} nuevas</span>
+        <span class="summary-chip duplicate"><i></i>{{ result.summary.duplicates }} duplicadas</span>
+        <span class="summary-chip invalid"><i></i>{{ result.summary.errors }} con error</span>
+      </div>
+      <div class="table-scroll">
+        <table class="preview-table">
+          <thead>
+            <tr>
+              <th>Fila</th>
+              <th>Estado</th>
+              <th>Cliente</th>
+              <th>Carátula / RIT</th>
+              <th>Materia</th>
+              <th>Prioridad</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of result.rows; track row.rowNumber) {
+              <tr [class.row-invalid]="row.status !== 'VALID'">
+                <td class="mono">{{ row.rowNumber }}</td>
+                <td>
+                  <span class="row-status" [class]="row.status.toLowerCase()">
+                    {{ statusLabel(row) }}
+                  </span>
+                </td>
+                <td>
+                  {{ row.data.clientName || row.data.clientEmail || "—" }}
+                  @if (row.data.clientName) {
+                    <small>{{ row.data.clientEmail }}</small>
+                  }
+                </td>
+                <td>
+                  {{ row.data.title || "—" }}
+                  <small class="mono">{{ row.data.rit || "Sin RIT" }}</small>
+                </td>
+                <td>{{ row.data.matter || "—" }}</td>
+                <td>{{ row.data.priority || "—" }}</td>
+                <td>{{ row.detail }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (result.summary.errors || result.summary.duplicates) {
+        <button class="text-button report-link" type="button" (click)="downloadErrors()">
+          Descargar informe de filas omitidas
+        </button>
+      }
+    </section>
+    <div class="import-actions">
+      <button class="button" type="button" (click)="step.set(2)">Atrás</button>
+      <button
+        class="button primary"
+        type="button"
+        [disabled]="!result.summary.valid || busy()"
+        (click)="confirm()"
+      >
+        {{ busy() ? "Importando…" : "Importar " + result.summary.valid + " causas" }}
+      </button>
+    </div>
+  } @else {
+    <section class="card import-card success-block">
+      <div class="success-mark" aria-hidden="true">✓</div>
+      <h2>Importación completada</h2>
+      <p>
+        Se agregaron <strong>{{ imported() }}</strong> causas a tu panel.
+        @if (omitted()) {
+          Se omitieron {{ omitted() }} filas con errores o duplicadas.
+        }
+      </p>
+      <a class="button primary" routerLink="/causas">Ir al panel de causas</a>
+    </section>
+  }
+}

@@ -1,0 +1,239 @@
+@if (auth.isLawyer()) {
+<div class="page-head">
+  <div>
+    <p class="eyebrow">
+      {{ auth.isLawyer() ? 'Gestión diaria' : 'Portal del cliente' }}
+    </p>
+    <h1>{{ auth.isLawyer() ? 'Panel de causas' : 'Mis causas' }}</h1>
+    <p class="muted">
+      {{ auth.isLawyer() ? 'Organiza, prioriza y consulta las causas de tu
+      cartera.' : 'Consulta la información de las causas asociadas a tu cuenta.'
+      }}
+    </p>
+  </div>
+  <a class="button primary" routerLink="/causas/nueva">＋ Nueva causa</a>
+</div>
+@if (error()) {
+<div class="error" role="alert">
+  {{ error() }} <button class="text-button" (click)="load()">Reintentar</button>
+</div>
+} @if (loading()) {
+<p class="card" role="status">Cargando tus causas…</p>
+} @else if (!error()) {
+<div class="stats">
+  <div class="stat">
+    <span>Causas activas</span><strong>{{ active().length }}</strong
+    ><small>En tu cartera</small>
+  </div>
+  <div class="stat">
+    <span>Prioridad alta</span><strong>{{ urgent() }}</strong
+    ><small>Requieren atención</small>
+  </div>
+  <div class="stat">
+    <span>Con fecha clave</span><strong>{{ upcoming() }}</strong
+    ><small>Causas activas con fecha registrada</small>
+  </div>
+</div>
+<section class="card filters" aria-label="Filtrar causas">
+  <div class="field search-field">
+    <label for="search">Buscar causa</label
+    ><input
+      id="search"
+      type="search"
+      placeholder="Referencia, RIT, carátula o cliente…"
+      [ngModel]="query()"
+      (ngModelChange)="query.set($event)"
+    />
+  </div>
+  <div class="field">
+    <label for="matter">Materia</label
+    ><select
+      id="matter"
+      [ngModel]="matter()"
+      (ngModelChange)="matter.set($event)"
+    >
+      <option value="">Todas</option>
+      <option>Familia</option>
+      <option>Laboral</option>
+      <option>Civil</option>
+      <option>Penal</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="priority">Prioridad</label
+    ><select
+      id="priority"
+      [ngModel]="priority()"
+      (ngModelChange)="priority.set($event)"
+    >
+      <option value="">Todas</option>
+      <option>Alta</option>
+      <option>Media</option>
+      <option>Baja</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="status">Estado</label
+    ><select
+      id="status"
+      [ngModel]="status()"
+      (ngModelChange)="status.set($event)"
+    >
+      <option value="">Todos</option>
+      <option>Activa</option>
+      <option>Archivada</option>
+    </select>
+  </div>
+  <button class="text-button" (click)="reset()">Limpiar</button>
+</section>
+<div class="table-card">
+  <div class="table-scroll">
+    <table>
+      <caption class="sr-only">
+        Causas de tu cuenta
+      </caption>
+      <thead>
+        <tr>
+          <th>Referencia / RIT</th>
+          <th>Carátula y cliente</th>
+          <th>Materia</th>
+          <th>Prioridad</th>
+          <th>Próxima fecha</th>
+          <th>Estado</th>
+          <th><span class="sr-only">Acciones</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of filtered(); track item.id) {
+        <tr>
+          <td>
+            <span class="mono">{{ item.reference }}</span
+            ><small>{{ item.rit || 'Sin RIT registrado' }}</small>
+          </td>
+          <td>
+            <a [routerLink]="['/causas',item.id]" class="case-title"
+              >{{ item.title }}</a
+            ><small>{{ item.clientName }}</small>
+          </td>
+          <td>{{ item.matter }}</td>
+          <td>
+            <span class="badge" [class.high]="item.priority === 'Alta'"
+              >{{ item.priority }}</span
+            >
+          </td>
+          <td>
+            {{ item.nextDate ? (item.nextDate | date:'dd/MM/yyyy') : 'Sin fecha'
+            }}<small>{{ item.nextDateLabel }}</small>
+          </td>
+          <td>{{ item.status }}</td>
+          <td>
+            <a
+              class="text-button"
+              [routerLink]="['/causas',item.id]"
+              [attr.aria-label]="'Ver causa ' + item.reference"
+              >Ver →</a
+            >
+          </td>
+        </tr>
+        } @empty {
+        <tr>
+          <td colspan="7" class="empty">
+            <h2>
+              {{ cases().length ? 'No hay coincidencias' : 'Aún no tienes
+              causas' }}
+            </h2>
+            <p>
+              {{ cases().length ? 'Prueba con otros filtros o una búsqueda
+              diferente.' : 'Las causas asociadas a tu cuenta aparecerán aquí.'
+              }}
+            </p>
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <div class="table-caption" role="status">
+    {{ filtered().length }} {{ filtered().length === 1 ? 'causa encontrada' :
+    'causas encontradas' }}<span>Ordenadas por prioridad y fecha</span>
+  </div>
+</div>
+}
+} @else {
+<section class="client-cases" aria-labelledby="client-cases-title">
+  <header class="client-welcome">
+    <h1 id="client-cases-title">Hola, {{ auth.user()?.name }}</h1>
+    <p>Aquí puedes revisar tus causas y sus próximas fechas.</p>
+  </header>
+
+  @if (error()) {
+    <div class="error" role="alert">
+      {{ error() }}
+      <button class="text-button" type="button" (click)="load()">Reintentar</button>
+    </div>
+  } @else {
+    <div class="client-tools" aria-label="Buscar y filtrar causas">
+      <label class="sr-only" for="client-search">Buscar causa</label>
+      <input
+        id="client-search"
+        type="search"
+        placeholder="Buscar por carátula, referencia o RIT"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+      />
+      <div class="client-status-toggle" aria-label="Estado de las causas">
+        <button
+          type="button"
+          [class.active]="status() === 'Activa'"
+          [attr.aria-pressed]="status() === 'Activa'"
+          (click)="status.set('Activa')"
+        >Activas</button>
+        <button
+          type="button"
+          [class.active]="status() === 'Archivada'"
+          [attr.aria-pressed]="status() === 'Archivada'"
+          (click)="status.set('Archivada')"
+        >Archivadas</button>
+      </div>
+    </div>
+
+    <div class="client-list-heading">
+      <div>
+        <h2>Tus causas</h2>
+        <span>{{ filtered().length }} {{ filtered().length === 1 ? 'causa' : 'causas' }} {{ status() === 'Activa' ? 'activas' : 'archivadas' }}</span>
+      </div>
+    </div>
+
+    @if (loading()) {
+      <p class="client-loading" role="status">Cargando tus causas…</p>
+    } @else {
+      <div class="client-case-list">
+        @for (item of filtered(); track item.id; let first = $first) {
+          <article class="client-case-row" [class.featured]="first">
+            <div class="client-case-identity">
+              <h3>{{ item.title }}</h3>
+              <p>{{ item.reference }}<span aria-hidden="true"> · </span>{{ item.rit || 'Sin RIT registrado' }}</p>
+            </div>
+            <div class="client-case-status">
+              <span>Estado</span>
+              <strong class="client-progress-pill">{{ item.status === 'Activa' ? (item.progressStage && item.progressStage !== 'NOT_REPORTED' ? stageLabel(item.progressStage) : 'En trámite') : 'Archivada' }}</strong>
+              <p>{{ item.progressSummary || (item.status === 'Activa' ? 'Esta causa se encuentra activa en tu portal.' : 'Esta causa fue archivada.') }}</p>
+            </div>
+            <div class="client-case-date">
+              <span>Próxima fecha</span>
+              <strong>{{ item.nextDate ? (item.nextDate | date:'dd MMM yyyy') : 'Sin fecha' }}</strong>
+              <p>{{ item.nextDateLabel || 'No hay una actividad próxima registrada' }}</p>
+            </div>
+            <a class="client-case-link" [routerLink]="['/causas', item.id]" [attr.aria-label]="'Ver causa ' + item.reference">Ver causa</a>
+          </article>
+        } @empty {
+          <div class="client-empty">
+            <h3>{{ cases().length ? 'No encontramos coincidencias' : 'Aún no tienes causas' }}</h3>
+            <p>{{ cases().length ? 'Prueba con otra búsqueda o revisa el estado seleccionado.' : 'Cuando tu abogado asocie una causa a tu cuenta, aparecerá aquí.' }}</p>
+          </div>
+        }
+      </div>
+    }
+  }
+</section>
+}
