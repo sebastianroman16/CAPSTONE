@@ -1052,6 +1052,25 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     const reviewed = await request(`/ingestion/${ingested.json.id}/review`,"PATCH",{status:"CONFIRMED",summary:"El tribunal emitió una resolución que fue revisada por el abogado."},lawyerCookie);
     assert.equal(reviewed.status,200);
   });
+  it("responde preguntas aproximadas, persiste historial por usuario y descuenta cuota", async () => {
+    const initial=await request("/assistant","GET",undefined,lawyerCookie);
+    assert.equal(initial.status,200);
+    assert.equal(initial.json.quota.limit,20);
+    const answer=await request("/assistant/messages","POST",{message:"como inporto causaz de exel"},lawyerCookie);
+    assert.equal(answer.status,201);
+    assert.equal(answer.json.matched,true);
+    assert.match(answer.json.content,/Importar desde Excel/i);
+    assert.equal(answer.json.quota.used,initial.json.quota.used+1);
+    const history=await request("/assistant","GET",undefined,lawyerCookie);
+    assert.equal(history.json.messages.at(-2).role,"USER");
+    assert.equal(history.json.messages.at(-1).role,"ASSISTANT");
+    const stored=await db.query("SELECT count(*)::int AS total FROM assistant_messages WHERE user_id=$1 AND conversation_id=$2",[lawyerId,initial.json.conversationId]);
+    assert.equal(stored.rows[0].total,2);
+    const fresh=await request("/assistant/conversations","POST",{},lawyerCookie);
+    assert.equal(fresh.status,201);
+    assert.notEqual(fresh.json.conversationId,initial.json.conversationId);
+    assert.equal(fresh.json.messages.length,0);
+  });
   it("invalida sesiones al cerrar sesión y al expirar", async () => {
     assert.equal(
       (await request("/auth/logout", "POST", {}, clientCookie)).status,

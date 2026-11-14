@@ -27,6 +27,7 @@ codigo-fuente/
 - Comunicaciones trazables, solicitudes y repositorio documental.
 - Notificaciones internas o mediante webhook externo.
 - Bandeja de movimientos con extracción local, Gemini opcional y confirmación humana.
+- Asistente flotante Lexi con banco de respuestas, tolerancia a errores, historial por usuario y cuota diaria.
 
 ## Requisitos
 
@@ -169,6 +170,7 @@ No uses `docker compose down -v` si necesitas conservar la base de datos local.
 - La ingesta no modifica el SAJ: procesa texto, correo, Excel y archivos con texto legible.
 - Gemini es opcional; sin clave o ante un fallo se aplica extracción local por reglas.
 - Correo y WhatsApp se conectan mediante `NOTIFICATION_WEBHOOK_URL`; sin proveedor, el mensaje permanece en la bandeja interna con estado verificable.
+- El chat Lexi no consume una API de IA: responde desde `assistant_knowledge`, registra las conversaciones por usuario y limita el uso a 20 preguntas diarias.
 
 ## Documentación adicional
 

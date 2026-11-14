@@ -22,6 +22,7 @@ npm test
 - `src/users`: consulta de clientes asociados al abogado.
 - `src/database`: pool de PostgreSQL y cierre ordenado.
 - `src/product`: agenda, comunicaciones, documentos, notificaciones e ingesta confirmable.
+- `src/assistant`: asistente simulado, coincidencia aproximada, historial y cuotas.
 - `migrations`: esquema SQL versionado.
 - `scripts`: migración transaccional y datos ficticios explícitos.
 - `test`: pruebas HTTP de integración con esquema PostgreSQL aislado.
@@ -53,6 +54,12 @@ La migración `007_complete_product_flows.sql` agrega cambio obligatorio de cont
 Los envíos externos usan `NOTIFICATION_WEBHOOK_URL`, con un payload que incluye `channel`, `to` y `message`. La recuperación usa `RESET_DELIVERY_WEBHOOK_URL`. En desarrollo, si no hay webhook, la API entrega un token de prueba; en producción nunca lo expone.
 
 La bandeja de ingesta exige confirmación humana. `GEMINI_API_KEY` habilita el resumen asistido; si falta o falla, la extracción por reglas continúa operativa. Confirmar un movimiento crea una comunicación y una notificación visibles para el cliente.
+
+## Asistente simulado Lexi
+
+La migración `008_simulated_assistant.sql` crea el banco `assistant_knowledge`, conversaciones y mensajes vinculados al `user_id`. El banco inicial cubre uso de causas, clientes, agenda, documentos, notificaciones, seguridad, importación, roles y límites del producto.
+
+El servidor normaliza mayúsculas y tildes, elimina palabras vacías y calcula coincidencias aproximadas mediante distancia de edición. Así tolera errores habituales sin presentar una respuesta de baja confianza como cierta. Cada usuario dispone de 20 preguntas al día y el endpoint aplica además un máximo de ocho envíos por minuto. Lexi explica el producto, pero no entrega asesoría jurídica ni envía información a un modelo externo.
 
 ## Coordinación jurídica
 

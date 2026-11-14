@@ -14,9 +14,10 @@ import {
 } from "@angular/router";
 import { AuthService, errorMessage } from "../core/auth.service";
 import { UnsavedChangesService } from "../core/unsaved-changes.service";
+import { AssistantWidget } from "./assistant-widget";
 @Component({
   selector: "app-shell",
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, AssistantWidget],
   template: ` <a class="skip-link" href="#contenido">Saltar al contenido</a>
     <div class="shell" [class.client-shell]="!auth.isLawyer() && !auth.isSupervisor()">
       @if (auth.isLawyer() || auth.isSupervisor()) {
@@ -143,6 +144,7 @@ import { UnsavedChangesService } from "../core/unsaved-changes.service";
         </main>
       </div>
     </div>
+    <app-assistant-widget />
     @if (inactivityWarning()) {
       <div class="session-backdrop">
         <section

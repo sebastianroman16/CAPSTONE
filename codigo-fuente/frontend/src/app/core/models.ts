@@ -160,3 +160,5 @@ export interface CaseDocument { id:string;title:string;description:string|null;c
 export interface DocumentRequest { id:string;caseId:string;reference:string;title:string;description:string|null;dueAt:string|null;status:string;createdAt:string; }
 export interface AppNotification { id:string;caseId:string|null;type:string;title:string;body:string;channel:string;deliveryStatus:string;readAt:string|null;createdAt:string; }
 export interface IngestionItem { id:string;caseId:string|null;sourceType:string;sourceName:string;detectedReference:string|null;detectedDate:string|null;detectedCourt:string|null;movementType:string;suggestedSummary:string;correctedSummary:string|null;status:string;createdAt:string; }
+export interface AssistantMessage { id?:number;role:"USER"|"ASSISTANT";content:string;confidence?:number;createdAt?:string; }
+export interface AssistantSession { conversationId:string;messages:AssistantMessage[];quota:{limit:number;used:number;remaining:number}; }

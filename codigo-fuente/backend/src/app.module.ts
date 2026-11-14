@@ -13,6 +13,7 @@ import { CasesModule } from "./cases/cases.module";
 import { UsersModule } from "./users/users.module";
 import { SupervisionModule } from "./supervision/supervision.module";
 import { ProductModule } from "./product/product.module";
+import { AssistantModule } from "./assistant/assistant.module";
 @Controller("health")
 class HealthController {
   constructor(private readonly db: DatabaseService) {}
@@ -33,6 +34,7 @@ class HealthController {
     UsersModule,
     SupervisionModule,
     ProductModule,
+    AssistantModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
   ],
   controllers: [HealthController],
