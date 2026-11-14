@@ -11,6 +11,8 @@ export const routes: Routes = [
     path: "iniciar-sesion",
     loadComponent: () => import("./features/login/login").then((m) => m.Login),
   },
+  { path:"recuperar-contrasena",loadComponent:()=>import("./features/login/password-recovery").then(m=>m.PasswordRecovery) },
+  { path:"restablecer-contrasena",loadComponent:()=>import("./features/login/password-recovery").then(m=>m.PasswordRecovery) },
   {
     path: "",
     canActivate: [authenticated],
@@ -85,6 +87,9 @@ export const routes: Routes = [
         loadComponent: () =>
           import("./features/profile/profile").then((m) => m.Profile),
       },
+      { path:"agenda",loadComponent:()=>import("./features/agenda/agenda").then(m=>m.Agenda) },
+      { path:"notificaciones",loadComponent:()=>import("./features/notifications/notifications").then(m=>m.Notifications) },
+      { path:"ingesta",canActivate:[lawyerOnly],loadComponent:()=>import("./features/ingestion/ingestion").then(m=>m.Ingestion) },
     ],
   },
   { path: "**", redirectTo: "causas" },

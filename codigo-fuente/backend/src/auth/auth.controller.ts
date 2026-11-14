@@ -16,6 +16,15 @@ class LoginDto {
   @IsEmail() @MaxLength(254) email!: string;
   @IsString() @MinLength(1) @MaxLength(128) password!: string;
 }
+class ChangePasswordDto {
+  @IsString() @MinLength(1) @MaxLength(128) currentPassword!: string;
+  @IsString() @MinLength(12) @MaxLength(128) newPassword!: string;
+}
+class ForgotPasswordDto { @IsEmail() @MaxLength(254) email!: string; }
+class ResetPasswordDto {
+  @IsString() @MinLength(64) @MaxLength(64) token!: string;
+  @IsString() @MinLength(12) @MaxLength(128) newPassword!: string;
+}
 @Controller("auth")
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -52,4 +61,15 @@ export class AuthController {
     res.clearCookie("lex_session", { path: "/api" });
     return { ok: true };
   }
+  @Post("change-password")
+  @UseGuards(AuthGuard)
+  changePassword(@Req() req: AuthRequest,@Body() dto:ChangePasswordDto){
+    return this.auth.changePassword(req.user,dto.currentPassword,dto.newPassword);
+  }
+  @Post("forgot-password")
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  forgot(@Body() dto:ForgotPasswordDto){return this.auth.forgotPassword(dto.email);}
+  @Post("reset-password")
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  reset(@Body() dto:ResetPasswordDto){return this.auth.resetPassword(dto.token,dto.newPassword);}
 }

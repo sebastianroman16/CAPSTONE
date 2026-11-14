@@ -27,9 +27,9 @@ export class Login {
     this.error.set("");
     const { email, password } = this.form.getRawValue();
     this.auth.login(email.trim(), password).subscribe({
-      next: () => {
+      next: (user) => {
         this.busy.set(false);
-        void this.router.navigateByUrl(this.auth.home());
+        void this.router.navigateByUrl(user.mustChangePassword ? "/perfil" : this.auth.home());
       },
       error: (error) => {
         this.busy.set(false);

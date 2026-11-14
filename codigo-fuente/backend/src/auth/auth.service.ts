@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
 import { DatabaseService } from "../database/database.service";
 import { hashPassword, verifyPassword } from "./password";
@@ -7,6 +7,8 @@ export interface SessionUser {
   name: string;
   email: string;
   role: "LAWYER" | "CLIENT" | "SUPERVISOR";
+  phone?: string | null;
+  mustChangePassword: boolean;
 }
 const SESSION_ABSOLUTE_HOURS = 8;
 // El frontend avisa a los 3 minutos y concede 10 segundos para confirmar.
@@ -82,7 +84,51 @@ export class AuthService {
         digest(token),
       ]);
   }
+  async changePassword(user: SessionUser, currentPassword: string, newPassword: string) {
+    const row = (await this.db.query("SELECT password_hash,must_change_password FROM users WHERE id=$1", [user.id])).rows[0];
+    if (!row || !(await verifyPassword(currentPassword, row.password_hash)))
+      throw new UnauthorizedException("La contraseña actual no es correcta.");
+    if (await verifyPassword(newPassword, row.password_hash))
+      throw new BadRequestException("La nueva contraseña debe ser diferente.");
+    await this.db.query(
+      `UPDATE users SET password_hash=$1,must_change_password=false,failed_login_attempts=0,locked_until=NULL WHERE id=$2`,
+      [await hashPassword(newPassword), user.id],
+    );
+    await this.db.query("UPDATE sessions SET revoked_at=now() WHERE user_id=$1", [user.id]);
+    return { ok: true };
+  }
+  async forgotPassword(email: string) {
+    const user = (await this.db.query("SELECT id,email FROM users WHERE email=$1 AND active=true", [email.toLowerCase().trim()])).rows[0];
+    let developmentToken: string | undefined;
+    if (user) {
+      const token = randomBytes(32).toString("hex");
+      await this.db.query(
+        `INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')`,
+        [digest(token), user.id],
+      );
+      const resetUrl = `${process.env.FRONTEND_ORIGIN || "http://localhost:4200"}/restablecer-contrasena?token=${token}`;
+      if (process.env.RESET_DELIVERY_WEBHOOK_URL) {
+        try { await fetch(process.env.RESET_DELIVERY_WEBHOOK_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:user.email,template:"password-reset",resetUrl})}); } catch { /* respuesta indistinguible para evitar enumeración */ }
+      } else if (process.env.NODE_ENV !== "production") developmentToken = token;
+    }
+    return { ok: true, developmentToken };
+  }
+  async resetPassword(token: string, newPassword: string) {
+    if (!/^[a-f0-9]{64}$/.test(token)) throw new BadRequestException("Enlace inválido o vencido.");
+    const client = await this.db.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const row = (await client.query(
+        `UPDATE password_reset_tokens SET used_at=now() WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() RETURNING user_id`,
+        [digest(token)],
+      )).rows[0];
+      if (!row) throw new BadRequestException("Enlace inválido o vencido.");
+      await client.query("UPDATE users SET password_hash=$1,must_change_password=false,failed_login_attempts=0,locked_until=NULL WHERE id=$2", [await hashPassword(newPassword),row.user_id]);
+      await client.query("UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",[row.user_id]);
+      await client.query("COMMIT"); return {ok:true};
+    } catch(e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+  }
   private publicUser(user: any): SessionUser {
-    return { id: user.id, name: user.name, email: user.email, role: user.role };
+    return { id: user.id, name: user.name, email: user.email, role: user.role, phone:user.phone, mustChangePassword:Boolean(user.must_change_password) };
   }
 }

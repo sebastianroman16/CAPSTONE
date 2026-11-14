@@ -21,6 +21,7 @@ npm test
 - `src/cases`: reglas de acceso por propietario, DTOs, operaciones e importación segura de causas desde Excel.
 - `src/users`: consulta de clientes asociados al abogado.
 - `src/database`: pool de PostgreSQL y cierre ordenado.
+- `src/product`: agenda, comunicaciones, documentos, notificaciones e ingesta confirmable.
 - `migrations`: esquema SQL versionado.
 - `scripts`: migración transaccional y datos ficticios explícitos.
 - `test`: pruebas HTTP de integración con esquema PostgreSQL aislado.
@@ -44,6 +45,14 @@ El servidor escucha en loopback para desarrollo. Para un despliegue en contenedo
 En producción la API rechaza peticiones que no lleguen mediante HTTPS (directamente o con `X-Forwarded-Proto: https` desde un proxy de confianza). La contraseña del login queda cifrada en tránsito por TLS y solo se compara en el servidor contra un hash `scrypt` con sal; no se almacena ni se registra en texto plano. No se utiliza cifrado reversible en JavaScript porque no agrega protección frente a un atacante de red y expondría el mecanismo de descifrado al cliente.
 
 [Guía completa del entorno](../README.md).
+
+## Flujos de producto completados
+
+La migración `007_complete_product_flows.sql` agrega cambio obligatorio de contraseña, comunicaciones e ingesta. Los plazos, documentos, solicitudes y notificaciones de la migración 004 cuentan ahora con API e interfaz. Los archivos se guardan fuera de PostgreSQL en `DOCUMENT_STORAGE_PATH`; la base conserva metadatos, versión y checksum.
+
+Los envíos externos usan `NOTIFICATION_WEBHOOK_URL`, con un payload que incluye `channel`, `to` y `message`. La recuperación usa `RESET_DELIVERY_WEBHOOK_URL`. En desarrollo, si no hay webhook, la API entrega un token de prueba; en producción nunca lo expone.
+
+La bandeja de ingesta exige confirmación humana. `GEMINI_API_KEY` habilita el resumen asistido; si falta o falla, la extracción por reglas continúa operativa. Confirmar un movimiento crea una comunicación y una notificación visibles para el cliente.
 
 ## Coordinación jurídica
 

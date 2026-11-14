@@ -5,6 +5,7 @@ import { RouterLink } from "@angular/router";
 import { forkJoin } from "rxjs";
 import { errorMessage } from "../../core/auth.service";
 import { CasesService } from "../../core/cases.service";
+import { ProductService } from "../../core/product.service";
 import { Client, LegalCase } from "../../core/models";
 
 interface PortfolioClient extends Client {
@@ -21,11 +22,14 @@ interface PortfolioClient extends Client {
 })
 export class ClientPortfolio {
   private readonly api = inject(CasesService);
+  private readonly product = inject(ProductService);
   readonly loading = signal(true);
   readonly error = signal("");
   readonly query = signal("");
   readonly clients = signal<Client[]>([]);
   readonly cases = signal<LegalCase[]>([]);
+  readonly temporaryPassword=signal("");
+  clientName="";clientEmail="";clientPhone="";
 
   readonly portfolio = computed<PortfolioClient[]>(() =>
     this.clients()
@@ -92,4 +96,5 @@ export class ClientPortfolio {
       },
     });
   }
+  createClient(){this.error.set("");this.product.createClient({name:this.clientName,email:this.clientEmail,phone:this.clientPhone}).subscribe({next:r=>{this.temporaryPassword.set(r.temporaryPassword);this.clientName="";this.clientEmail="";this.clientPhone="";this.load();},error:e=>this.error.set(errorMessage(e))});}
 }

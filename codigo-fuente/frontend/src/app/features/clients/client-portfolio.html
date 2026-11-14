@@ -6,6 +6,7 @@
   </div>
   <a class="button primary" routerLink="/causas/nueva">Nueva causa</a>
 </div>
+<section class="card"><h2>Crear cuenta de cliente</h2><p class="muted">Se genera una contraseña temporal y el cliente deberá cambiarla al ingresar.</p>@if(temporaryPassword()){<div class="success" role="status"><strong>Contraseña temporal:</strong> {{temporaryPassword()}}. Entrégala por un canal seguro; se muestra una sola vez.</div>}<form (ngSubmit)="createClient()"><div class="form-grid"><div class="field"><label for="client-name">Nombre</label><input id="client-name" name="clientName" [(ngModel)]="clientName" required></div><div class="field"><label for="client-email">Correo</label><input id="client-email" name="clientEmail" type="email" [(ngModel)]="clientEmail" required></div><div class="field"><label for="client-phone">Teléfono</label><input id="client-phone" name="clientPhone" [(ngModel)]="clientPhone"></div></div><button class="button primary">Crear cliente</button></form></section>
 
 @if (error()) {
   <div class="error" role="alert">

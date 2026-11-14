@@ -28,6 +28,9 @@ export class AuthService {
       .post<User>("/api/auth/login", { email, password })
       .pipe(tap((user) => this.user.set(user)));
   }
+  changePassword(currentPassword:string,newPassword:string){return this.http.post("/api/auth/change-password",{currentPassword,newPassword}).pipe(tap(()=>{const u=this.user();if(u)this.user.set({...u,mustChangePassword:false});}));}
+  forgotPassword(email:string){return this.http.post<{ok:true;developmentToken?:string}>("/api/auth/forgot-password",{email});}
+  resetPassword(token:string,newPassword:string){return this.http.post("/api/auth/reset-password",{token,newPassword});}
   async restore() {
     if (this.user()) return true;
     try {

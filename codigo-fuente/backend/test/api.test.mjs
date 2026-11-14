@@ -189,7 +189,9 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.deepEqual(Object.keys(result.json).sort(), [
       "email",
       "id",
+      "mustChangePassword",
       "name",
+      "phone",
       "role",
     ]);
   });
@@ -1000,6 +1002,55 @@ describe("API real con PostgreSQL y esquema aislado", () => {
       first.lawyers.find((l) => l.id === otherId).accountActive,
       false,
     );
+  });
+  it("crea clientes con clave temporal y exige cambiarla", async () => {
+    const email = `nuevo-${randomBytes(4).toString("hex")}@example.test`;
+    const createdClient = await request("/users/clients", "POST", {
+      name: "Cliente nuevo", email, phone: "+56911112222",
+    }, lawyerCookie);
+    assert.equal(createdClient.status, 201);
+    assert.ok(createdClient.json.temporaryPassword.length >= 12);
+    const login = await request("/auth/login", "POST", {
+      email, password: createdClient.json.temporaryPassword,
+    });
+    assert.equal(login.status, 201);
+    assert.equal(login.json.mustChangePassword, true);
+    const cookie = login.cookie.split(";")[0];
+    const changed = await request("/auth/change-password", "POST", {
+      currentPassword: createdClient.json.temporaryPassword,
+      newPassword: "Nueva-clave-segura-2026",
+    }, cookie);
+    assert.equal(changed.status, 201);
+    assert.equal((await request("/auth/me", "GET", undefined, cookie)).status, 401);
+    assert.equal(await verifyPassword("Nueva-clave-segura-2026",(await db.query("SELECT password_hash FROM users WHERE email=$1",[email])).rows[0].password_hash),true);
+  });
+  it("gestiona agenda, comunicaciones y notificaciones del cliente", async () => {
+    const caseId = "33333333-3333-4333-8333-333333333333";
+    const deadline = await request(`/cases/${caseId}/deadlines`, "POST", {
+      deadlineType:"HEARING",title:"Audiencia de prueba",dueAt:"2026-12-18T12:00:00.000Z",reminderAt:"2026-12-17T12:00:00.000Z",
+    }, lawyerCookie);
+    assert.equal(deadline.status, 201, JSON.stringify(deadline.json));
+    const agenda = await request("/agenda?from=2026-12-01&to=2026-12-31", "GET", undefined, lawyerCookie);
+    assert.ok(agenda.json.some((item) => item.id === deadline.json.id));
+    const sent = await request(`/cases/${caseId}/communications`, "POST", {message:"Audiencia confirmada para diciembre.",channel:"IN_APP"}, lawyerCookie);
+    assert.equal(sent.status, 201, `${JSON.stringify(sent.json)}\n${output}`);
+    const communications = await request(`/cases/${caseId}/communications`, "GET", undefined, clientCookie);
+    assert.ok(communications.json.some((item) => item.message.includes("Audiencia confirmada")));
+    const notifications = await request("/notifications", "GET", undefined, clientCookie);
+    assert.ok(notifications.json.some((item) => item.type === "CASE_UPDATE"));
+  });
+  it("completa solicitudes documentales e ingesta con confirmación humana", async () => {
+    const caseId = "33333333-3333-4333-8333-333333333333";
+    assert.equal((await request(`/cases/${caseId}/document-requests`, "POST", {assignedTo:clientId,title:"Cédula de identidad"}, lawyerCookie)).status, 201);
+    const form = new FormData();
+    form.append("file",new Blob(["documento ficticio"],{type:"text/plain"}),"cedula.txt");
+    form.append("title","Documento ficticio");form.append("category","IDENTITY");form.append("visibility","CLIENT");
+    const uploaded = await fetch(`${base}/cases/${caseId}/documents`,{method:"POST",headers:{cookie:clientCookie},body:form});
+    assert.equal(uploaded.status,201);
+    const ingested = await request("/ingestion/text","POST",{sourceType:"EMAIL",sourceName:"Correo PJUD",caseId,text:"Tribunal: Juzgado de Familia. Resolución causa LC-1 con fecha 2026-12-19."},lawyerCookie);
+    assert.equal(ingested.status,201);
+    const reviewed = await request(`/ingestion/${ingested.json.id}/review`,"PATCH",{status:"CONFIRMED",summary:"El tribunal emitió una resolución que fue revisada por el abogado."},lawyerCookie);
+    assert.equal(reviewed.status,200);
   });
   it("invalida sesiones al cerrar sesión y al expirar", async () => {
     assert.equal(

@@ -22,6 +22,11 @@ codigo-fuente/
 - Importación de causas desde Excel con previsualización y validación.
 - Protección frente a ediciones concurrentes mediante versión de la causa.
 - Control de inactividad, renovación y revocación de sesiones.
+- Alta de clientes con contraseña temporal, cambio obligatorio y recuperación de acceso.
+- Perfil editable, agenda de pendientes y recordatorios.
+- Comunicaciones trazables, solicitudes y repositorio documental.
+- Notificaciones internas o mediante webhook externo.
+- Bandeja de movimientos con extracción local, Gemini opcional y confirmación humana.
 
 ## Requisitos
 
@@ -161,7 +166,9 @@ No uses `docker compose down -v` si necesitas conservar la base de datos local.
 - Las credenciales y datos incluidos en el seed son ficticios.
 - El proyecto corresponde a un entorno académico de desarrollo local.
 - Antes de utilizar datos reales se requieren HTTPS, gestión de secretos, respaldos, políticas de conservación, auditoría operativa y una revisión completa de permisos.
-- La solución todavía no se integra con SAJ ni con proveedores externos de inteligencia artificial.
+- La ingesta no modifica el SAJ: procesa texto, correo, Excel y archivos con texto legible.
+- Gemini es opcional; sin clave o ante un fallo se aplica extracción local por reglas.
+- Correo y WhatsApp se conectan mediante `NOTIFICATION_WEBHOOK_URL`; sin proveedor, el mensaje permanece en la bandeja interna con estado verificable.
 
 ## Documentación adicional
 

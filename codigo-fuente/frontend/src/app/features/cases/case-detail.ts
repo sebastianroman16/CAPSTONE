@@ -5,9 +5,10 @@ import { AuthService, errorMessage } from "../../core/auth.service";
 import { CasesService } from "../../core/cases.service";
 import { LegalCase, ProgressEvent, stageLabel } from "../../core/models";
 import { ProgressHistory } from "../supervision/progress-history";
+import { CaseWorkspace } from "./case-workspace";
 @Component({
   selector: "app-case-detail",
-  imports: [RouterLink, DatePipe, ProgressHistory],
+  imports: [RouterLink, DatePipe, ProgressHistory, CaseWorkspace],
   template: ` <a class="back-link" routerLink="/causas"
       >← Volver a mis causas</a
     >
@@ -165,6 +166,7 @@ import { ProgressHistory } from "../supervision/progress-history";
           </div>
         }
       }
+      <app-case-workspace [caseId]="c.id" [clientId]="c.clientId" [isLawyer]="auth.isLawyer()" />
     }`,
 })
 export class CaseDetail {

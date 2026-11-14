@@ -72,7 +72,10 @@ import { UnsavedChangesService } from "../core/unsaved-changes.service";
               (click)="menuOpen.set(false)"
               >Importar desde Excel</a
             >
+            <a class="side-link" routerLink="/agenda" routerLinkActive="active" (click)="menuOpen.set(false)">Agenda y pendientes</a>
+            <a class="side-link" routerLink="/ingesta" routerLinkActive="active" (click)="menuOpen.set(false)">Bandeja de movimientos</a>
           }
+          <a class="side-link" routerLink="/notificaciones" routerLinkActive="active" (click)="menuOpen.set(false)">Notificaciones</a>
         </nav>
         <div class="sidebar-foot">
           <a
@@ -115,6 +118,7 @@ import { UnsavedChangesService } from "../core/unsaved-changes.service";
           <nav class="client-nav" aria-label="Navegación del cliente">
             <a routerLink="/causas" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Mis causas</a>
             <a routerLink="/perfil" routerLinkActive="active">Mi perfil</a>
+            <a routerLink="/notificaciones" routerLinkActive="active">Notificaciones</a>
           </nav>
           <details class="client-account">
             <summary>
