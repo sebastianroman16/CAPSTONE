@@ -156,11 +156,33 @@ export class AssistantService {
     return { answer: this.describeCase(scored[0].item, message, user), confidence: scored[0].score };
   }
 
+  private legalAdviceAnswer(message: string) {
+    const value = normalize(message);
+    const asksForDecision = /\b(debo|conviene|recomienda|recomiendas|estrategia|demandar|demandarlo|apelar|denunciar|ganar|probabilidad|pronostico)\b/.test(value);
+    const legalContext = /\b(legal|juridic|juicio|causa|caso|demanda|tribunal|abogado|querella|recurso|pension|despido)\b/.test(value);
+    if (!asksForDecision || !legalContext) return null;
+    return {
+      answer: "No puedo recomendar una estrategia, predecir el resultado ni indicarte si debes demandar, apelar o realizar otra acción jurídica. Puedo mostrar datos registrados en LEX-CORPUS, pero esa decisión debe revisarla el abogado responsable.",
+      confidence: 1,
+    };
+  }
+
+  private privacyAnswer(message: string) {
+    const value = normalize(message);
+    const asksForSensitiveData = /\b(datos privados|notas internas|credenciales|contrasenas|todas las causas|otra cartera|otro abogado|otro cliente)\b/.test(value);
+    const asksToReveal = /\b(muestra|muestrame|mostrar|dime|dame|ver|revela|revelar|ignora)\b/.test(value);
+    if (!asksForSensitiveData || !asksToReveal) return null;
+    return {
+      answer: "No puedo mostrar notas internas, credenciales ni información de causas fuera de tu acceso. Lexi aplica los mismos permisos de LEX-CORPUS: solo consulta las causas autorizadas para tu cuenta.",
+      confidence: 1,
+    };
+  }
+
   async ask(message: string, user: SessionUser) {
     const used = await this.used(user);
     if (used >= DAILY_LIMIT) throw new HttpException(`Alcanzaste el límite diario de ${DAILY_LIMIT} preguntas. Intenta nuevamente mañana.`, HttpStatus.TOO_MANY_REQUESTS);
     const conversationId = await this.conversation(user);
-    const dynamic = await this.caseAnswer(message, user);
+    const dynamic = this.privacyAnswer(message) || this.legalAdviceAnswer(message) || await this.caseAnswer(message, user);
     const knowledge = dynamic ? [] : (await this.db.query(
       `SELECT id,intent,question,answer,keywords,audience FROM assistant_knowledge WHERE active=true AND audience IN ('ALL',$1)`,
       [user.role],
