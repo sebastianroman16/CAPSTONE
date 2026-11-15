@@ -37,6 +37,7 @@ export const routes: Routes = [
             (m) => m.SupervisionDetail,
           ),
       },
+      { path:"administracion",canActivate:[supervisorOnly],loadComponent:()=>import("./features/admin/administration").then(m=>m.Administration) },
       {
         path: "causas",
         canActivate: [caseAccess],

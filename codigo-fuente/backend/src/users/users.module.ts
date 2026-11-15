@@ -24,7 +24,9 @@ class UsersController {
     if (req.user.role !== "LAWYER") throw new ForbiddenException();
     return (
       await this.db.query(
-        "SELECT id,name,email FROM users WHERE role='CLIENT' AND lawyer_id=$1 AND active=true ORDER BY name",
+        `SELECT DISTINCT u.id,u.name,u.email FROM users u
+         JOIN lawyer_client_assignments a ON a.client_id=u.id AND a.ended_at IS NULL
+         WHERE u.role='CLIENT' AND a.lawyer_id=$1 AND u.active=true ORDER BY u.name`,
         [req.user.id],
       )
     ).rows;

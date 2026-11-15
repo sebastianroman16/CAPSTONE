@@ -70,6 +70,7 @@ describe("Navegación real de supervisión", () => {
     http
       .expectOne("/api/supervision/cases/case-1")
       .flush({ id: "case-1", history: [] });
+    http.expectOne("/api/admin/users").flush([]);
     http.verify();
   });
 });

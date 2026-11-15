@@ -51,6 +51,9 @@ import { AssistantWidget } from "./assistant-widget";
                   : "Mis causas"
             }}</a
           >
+          @if (auth.isSupervisor()) {
+            <a class="side-link" routerLink="/administracion" routerLinkActive="active" (click)="menuOpen.set(false)">Administración y auditoría</a>
+          }
           @if (auth.isLawyer()) {
             <a
               class="side-link"

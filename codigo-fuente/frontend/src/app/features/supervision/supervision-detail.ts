@@ -5,9 +5,12 @@ import { SupervisionService } from "../../core/supervision.service";
 import { errorMessage } from "../../core/auth.service";
 import { ProgressEvent, stageLabel, SupervisedCase } from "../../core/models";
 import { ProgressHistory } from "./progress-history";
+import { FormsModule } from "@angular/forms";
+import { AdminService } from "../../core/admin.service";
+import { ManagedUser } from "../../core/models";
 @Component({
   selector: "app-supervision-detail",
-  imports: [DatePipe, RouterLink, ProgressHistory],
+  imports: [DatePipe, RouterLink, ProgressHistory, FormsModule],
   template: ` <a class="back-link" routerLink="/supervision"
       >← Volver a supervisión</a
     >
@@ -19,11 +22,12 @@ import { ProgressHistory } from "./progress-history";
         {{ error() }}
         <button class="text-button" (click)="load()">Reintentar</button>
       </div>
+      <section class="card"><h2>Reasignar responsable</h2><p class="muted">La reasignación queda registrada en el historial y conserva todos los datos de la causa.</p><form (ngSubmit)="reassign()"><div class="field"><label for="new-lawyer">Nuevo abogado</label><select id="new-lawyer" name="newLawyerId" [(ngModel)]="newLawyerId" required><option value="">Selecciona un abogado activo</option>@for(lawyer of lawyers();track lawyer.id){<option [value]="lawyer.id">{{lawyer.name}}</option>}</select></div><div class="field"><label for="reason">Motivo</label><textarea id="reason" name="reason" [(ngModel)]="reason" required minlength="5" maxlength="500"></textarea></div><button class="button" [disabled]="!newLawyerId||reason.trim().length<5">Confirmar reasignación</button></form></section>
     }
     @if (item(); as c) {
       <div class="page-head">
         <div>
-          <p class="eyebrow">{{ c.reference }} · Supervisión de solo lectura</p>
+          <p class="eyebrow">{{ c.reference }} · Supervisión y coordinación</p>
           <h1>{{ c.title }}</h1>
           <p class="muted">
             Responsable: {{ c.lawyerName
@@ -99,6 +103,7 @@ import { ProgressHistory } from "./progress-history";
 })
 export class SupervisionDetail {
   private readonly api = inject(SupervisionService);
+  private readonly admin=inject(AdminService);
   private readonly id = inject(ActivatedRoute).snapshot.paramMap.get("id")!;
   readonly item = signal<
     (SupervisedCase & { history: ProgressEvent[] }) | null
@@ -106,8 +111,10 @@ export class SupervisionDetail {
   readonly error = signal("");
   readonly loading = signal(false);
   readonly stageLabel = stageLabel;
+  readonly lawyers=signal<ManagedUser[]>([]);newLawyerId="";reason="";
   constructor() {
     this.load();
+    this.admin.users().subscribe({next:users=>this.lawyers.set(users.filter(user=>user.role==="LAWYER"&&user.active)),error:e=>this.error.set(errorMessage(e))});
   }
   load() {
     this.loading.set(true);
@@ -124,4 +131,5 @@ export class SupervisionDetail {
       },
     });
   }
+  reassign(){if(!this.newLawyerId||this.reason.trim().length<5)return;this.admin.reassign(this.id,this.newLawyerId,this.reason).subscribe({next:()=>{this.newLawyerId="";this.reason="";this.load();},error:e=>this.error.set(errorMessage(e))});}
 }

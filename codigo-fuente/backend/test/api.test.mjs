@@ -1179,6 +1179,21 @@ describe("API real con PostgreSQL y esquema aislado", () => {
       401,
     );
   });
+  it("permite al coordinador administrar cuentas, auditar y reasignar causas",async()=>{
+    const users=await request("/admin/users","GET",undefined,supervisorCookie);
+    assert.equal(users.status,200);
+    assert.ok(users.json.some(user=>user.id===otherId&&user.role==="LAWYER"));
+    assert.equal((await request("/admin/users","GET",undefined,lawyerCookie)).status,403);
+    const reassigned=await request(`/admin/cases/${created}/reassign`,"PATCH",{lawyerId:otherId,reason:"Redistribución de carga para prueba"},supervisorCookie);
+    assert.equal(reassigned.status,200,JSON.stringify(reassigned.json));
+    assert.equal((await db.query("SELECT lawyer_id FROM cases WHERE id=$1",[created])).rows[0].lawyer_id,otherId);
+    assert.equal((await db.query("SELECT count(*)::int AS total FROM lawyer_client_assignments a JOIN cases c ON c.client_id=a.client_id WHERE c.id=$1 AND a.lawyer_id=$2 AND a.ended_at IS NULL",[created,otherId])).rows[0].total,1);
+    const audit=await request("/admin/audit?limit=10","GET",undefined,supervisorCookie);
+    assert.equal(audit.status,200);
+    assert.ok(audit.json.some(entry=>entry.entityType==="cases"&&entry.entityId===created));
+    assert.equal((await request(`/admin/users/${otherId}/status`,"PATCH",{active:false},supervisorCookie)).status,200);
+    assert.equal((await request(`/admin/users/${otherId}/status`,"PATCH",{active:true},supervisorCookie)).status,200);
+  });
   it("deriva contraseñas con sal única y verifica sin aceptar claves incorrectas", async () => {
     const hash = await hashPassword(password);
     const second = await hashPassword(password);

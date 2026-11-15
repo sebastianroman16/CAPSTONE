@@ -171,3 +171,5 @@ export interface AppNotification { id:string;caseId:string|null;type:string;titl
 export interface IngestionItem { id:string;caseId:string|null;sourceType:string;sourceName:string;detectedReference:string|null;detectedDate:string|null;detectedCourt:string|null;movementType:string;suggestedSummary:string;correctedSummary:string|null;status:string;createdAt:string; }
 export interface AssistantMessage { id?:number;role:"USER"|"ASSISTANT";content:string;confidence?:number;createdAt?:string; }
 export interface AssistantSession { conversationId:string;messages:AssistantMessage[];quota:{limit:number;used:number;remaining:number}; }
+export interface ManagedUser { id:string;name:string;email:string;phone:string|null;role:string;active:boolean;office:string|null;lastLoginAt:string|null;createdAt:string;caseCount:number; }
+export interface AuditEntry { id:number;entityType:string;entityId:string;action:string;occurredAt:string;actorName:string|null; }

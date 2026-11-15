@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lex_corpus
+      POSTGRES_USER: lex_corpus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lex_corpus -d lex_corpus"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://lex_corpus:${POSTGRES_PASSWORD}@postgres:5432/lex_corpus
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Define FRONTEND_ORIGIN}
+      DOCUMENT_STORAGE_PATH: /app/data/documents
+      NOTIFICATION_WEBHOOK_URL: ${NOTIFICATION_WEBHOOK_URL:-}
+      RESET_DELIVERY_WEBHOOK_URL: ${RESET_DELIVERY_WEBHOOK_URL:-}
+      CLIENT_CREDENTIALS_WEBHOOK_URL: ${CLIENT_CREDENTIALS_WEBHOOK_URL:-}
+      INGESTION_WEBHOOK_SECRET: ${INGESTION_WEBHOOK_SECRET:?Define INGESTION_WEBHOOK_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - document_data:/app/data/documents
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    depends_on:
+      backend: { condition: service_healthy }
+volumes:
+  postgres_data:
+  document_data:

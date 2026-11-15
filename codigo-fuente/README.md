@@ -172,6 +172,12 @@ No uses `docker compose down -v` si necesitas conservar la base de datos local.
 - Correo y WhatsApp se conectan mediante `NOTIFICATION_WEBHOOK_URL`; sin proveedor, el mensaje permanece en la bandeja interna con estado verificable.
 - El chat Lexi no consume una API de IA: responde desde `assistant_knowledge`, registra las conversaciones por usuario y limita el uso a 20 preguntas diarias.
 
+## Operación productiva reproducible
+
+`compose.production.yaml` construye frontend, backend y PostgreSQL con comprobaciones de salud y volúmenes persistentes. Copia `.env.production.example` a un archivo privado, reemplaza todos los secretos y publica el puerto únicamente detrás de un reverse proxy con HTTPS. Antes del primer inicio ejecuta las migraciones dentro del contenedor backend.
+
+`GET /api/health/readiness` informa qué integraciones están configuradas sin revelar secretos. `scripts/backup.sh` genera un respaldo de PostgreSQL y otro del repositorio documental; ambos deben copiarse a almacenamiento cifrado externo y someterse periódicamente a una prueba de restauración.
+
 ## Documentación adicional
 
 - `backend/README.md`: detalles de la API, sesiones, importación y modelo de datos.

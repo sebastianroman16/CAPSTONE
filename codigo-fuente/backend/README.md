@@ -51,6 +51,8 @@ En producción la API rechaza peticiones que no lleguen mediante HTTPS (directam
 
 La migración `007_complete_product_flows.sql` agrega cambio obligatorio de contraseña, comunicaciones e ingesta. Los plazos, documentos, solicitudes y notificaciones de la migración 004 cuentan ahora con API e interfaz. Los archivos se guardan fuera de PostgreSQL en `DOCUMENT_STORAGE_PATH`; la base conserva metadatos, versión y checksum.
 
+Las migraciones 009 y 010 agregan idempotencia para correo entrante, trazabilidad de respuestas documentales, administración de cuentas, participación de clientes con más de un abogado y un historial explícito de reasignaciones. El coordinador puede consultar `/api/admin/users`, revocar o reactivar accesos, reasignar causas y revisar `/api/admin/audit`. Toda reasignación mantiene la causa y sus documentos, incrementa su versión y registra responsable anterior, nuevo responsable, autor y motivo.
+
 Los envíos externos usan `NOTIFICATION_WEBHOOK_URL`, con un payload que incluye `channel`, `to` y `message`. La recuperación usa `RESET_DELIVERY_WEBHOOK_URL`. En desarrollo, si no hay webhook, la API entrega un token de prueba; en producción nunca lo expone.
 
 El alta de un cliente desde una causa puede entregar las credenciales mediante `CLIENT_CREDENTIALS_WEBHOOK_URL`. El payload incluye `to`, `name`, `temporaryPassword`, `loginUrl` y la plantilla `client-welcome`. El cliente queda marcado para cambiar obligatoriamente esa clave: mientras no lo haga, la API solo permite consultar/editar el perfil, renovar la sesión, cambiar la contraseña o cerrarla.

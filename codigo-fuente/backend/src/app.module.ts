@@ -14,6 +14,7 @@ import { UsersModule } from "./users/users.module";
 import { SupervisionModule } from "./supervision/supervision.module";
 import { ProductModule } from "./product/product.module";
 import { AssistantModule } from "./assistant/assistant.module";
+import { AdminModule } from "./admin/admin.module";
 @Controller("health")
 class HealthController {
   constructor(private readonly db: DatabaseService) {}
@@ -25,6 +26,19 @@ class HealthController {
       throw new ServiceUnavailableException("Base de datos no disponible.");
     }
   }
+  @Get("readiness") async readiness() {
+    await this.health();
+    return {
+      status:"ready",
+      database:true,
+      documents:Boolean(process.env.DOCUMENT_STORAGE_PATH),
+      notifications:Boolean(process.env.NOTIFICATION_WEBHOOK_URL),
+      passwordRecovery:Boolean(process.env.RESET_DELIVERY_WEBHOOK_URL),
+      clientCredentials:Boolean(process.env.CLIENT_CREDENTIALS_WEBHOOK_URL),
+      incomingEmail:Boolean(process.env.INGESTION_WEBHOOK_SECRET),
+      assistedSummary:Boolean(process.env.GEMINI_API_KEY),
+    };
+  }
 }
 @Module({
   imports: [
@@ -35,6 +49,7 @@ class HealthController {
     SupervisionModule,
     ProductModule,
     AssistantModule,
+    AdminModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
   ],
   controllers: [HealthController],
