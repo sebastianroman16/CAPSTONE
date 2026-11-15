@@ -53,6 +53,10 @@ La migración `007_complete_product_flows.sql` agrega cambio obligatorio de cont
 
 Los envíos externos usan `NOTIFICATION_WEBHOOK_URL`, con un payload que incluye `channel`, `to` y `message`. La recuperación usa `RESET_DELIVERY_WEBHOOK_URL`. En desarrollo, si no hay webhook, la API entrega un token de prueba; en producción nunca lo expone.
 
+El alta de un cliente desde una causa puede entregar las credenciales mediante `CLIENT_CREDENTIALS_WEBHOOK_URL`. El payload incluye `to`, `name`, `temporaryPassword`, `loginUrl` y la plantilla `client-welcome`. El cliente queda marcado para cambiar obligatoriamente esa clave: mientras no lo haga, la API solo permite consultar/editar el perfil, renovar la sesión, cambiar la contraseña o cerrarla.
+
+Para ingesta automática, configura un secreto robusto en `INGESTION_WEBHOOK_SECRET` y conecta el proveedor de correo a `POST /api/webhooks/ingestion/email`. Debe enviar el encabezado `X-Ingestion-Secret` y JSON con `messageId`, `lawyerEmail`, `subject` y `text`. `messageId` es idempotente: reenviar el mismo correo no duplica movimientos.
+
 La bandeja de ingesta exige confirmación humana. `GEMINI_API_KEY` habilita el resumen asistido; si falta o falla, la extracción por reglas continúa operativa. Confirmar un movimiento crea una comunicación y una notificación visibles para el cliente.
 
 ## Asistente simulado Lexi

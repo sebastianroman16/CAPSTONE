@@ -3,10 +3,12 @@ import { FormsModule } from "@angular/forms";
 import { AuthService } from "../../core/auth.service";
 import { errorMessage } from "../../core/auth.service";
 import { ProductService } from "../../core/product.service";
+import { Router } from "@angular/router";
 @Component({
   selector: "app-profile",
   imports:[FormsModule],
   template:`<div class="page-head"><div><p class="eyebrow">Tu cuenta</p><h1>Mi perfil y seguridad</h1><p class="muted">Actualiza tus datos y protege el acceso.</p></div></div>
+@if(auth.user()?.mustChangePassword){<div class="error" role="alert"><strong>Cambio obligatorio:</strong> usa la contraseña temporal recibida y define una nueva antes de acceder a tus causas.</div>}
 @if(message()){<div class="success" role="status">{{message()}}</div>} @if(error()){<div class="error" role="alert">{{error()}}</div>}
 <div class="detail-grid"><form class="card" (ngSubmit)="saveProfile()"><h2>Datos de contacto</h2>
 <div class="field"><label for="profile-name">Nombre</label><input id="profile-name" name="name" [(ngModel)]="name" required minlength="3"></div>
@@ -18,9 +20,10 @@ import { ProductService } from "../../core/product.service";
 })
 export class Profile {
   readonly auth = inject(AuthService);
+  private router=inject(Router);
   private api=inject(ProductService);readonly busy=signal(false);readonly error=signal("");readonly message=signal("");
   name=this.auth.user()?.name||"";email=this.auth.user()?.email||"";phone=this.auth.user()?.phone||"";currentPassword="";newPassword="";
   saveProfile(){if(this.busy())return;this.busy.set(true);this.clear();this.api.updateProfile({name:this.name,email:this.email,phone:this.phone}).subscribe({next:u=>{this.auth.user.set(u);this.busy.set(false);this.message.set("Perfil actualizado.");},error:e=>this.fail(e)});}
-  changePassword(){if(this.busy()||this.newPassword.length<12)return;this.busy.set(true);this.clear();this.auth.changePassword(this.currentPassword,this.newPassword).subscribe({next:()=>{this.busy.set(false);this.currentPassword="";this.newPassword="";this.message.set("Contraseña actualizada.");},error:e=>this.fail(e)});}
+  changePassword(){if(this.busy()||this.newPassword.length<12)return;this.busy.set(true);this.clear();this.auth.changePassword(this.currentPassword,this.newPassword).subscribe({next:()=>{this.busy.set(false);this.auth.user.set(null);void this.router.navigate(["/iniciar-sesion"],{queryParams:{passwordChanged:"true"}});},error:e=>this.fail(e)});}
   private clear(){this.error.set("");this.message.set("");} private fail(e:any){this.busy.set(false);this.error.set(errorMessage(e));}
 }

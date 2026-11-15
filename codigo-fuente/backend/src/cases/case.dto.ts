@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  IsEmail,
   Matches,
   MaxLength,
   MinLength,
@@ -13,9 +14,8 @@ import {
 import { Transform } from "class-transformer";
 const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
-export class SaveCaseDto {
+export class CaseFieldsDto {
   @Transform(trim) @IsString() @MinLength(3) @MaxLength(200) title!: string;
-  @IsUUID() clientId!: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(50) rit?: string;
   @IsIn(["Familia", "Laboral", "Civil", "Penal"]) matter!: string;
   @Transform(trim) @IsString() @MinLength(3) @MaxLength(200) court!: string;
@@ -33,7 +33,18 @@ export class SaveCaseDto {
   internalNotes?: string;
 }
 
-export class UpdateCaseDto extends SaveCaseDto {
+export class CreateCaseDto extends CaseFieldsDto {
+  @IsOptional() @IsUUID() clientId?: string;
+  @IsOptional() @Transform(trim) @IsString() @MinLength(3) @MaxLength(160)
+  newClientName?: string;
+  @IsOptional() @Transform(trim) @IsEmail() @MaxLength(254)
+  newClientEmail?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(30)
+  newClientPhone?: string;
+}
+
+export class UpdateCaseDto extends CaseFieldsDto {
+  @IsUUID() clientId!: string;
   @IsInt() @Min(1) @Max(2147483646) version!: number;
 }
 export class ArchiveCaseDto {

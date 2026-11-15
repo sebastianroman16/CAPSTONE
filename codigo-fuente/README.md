@@ -15,18 +15,18 @@ codigo-fuente/
 
 - Inicio y cierre de sesión con acceso diferenciado por rol.
 - Gestión de causas para abogados: registro, edición, consulta y archivo.
-- Búsqueda y filtros por materia, prioridad y estado.
+- Búsqueda, filtros y ordenamiento configurable por prioridad, cliente, materia o fecha.
 - Portal de consulta para clientes, sin exposición de notas internas.
 - Panel de supervisión para coordinación jurídica con acceso de solo lectura.
 - Registro e historial de avances de las causas.
 - Importación de causas desde Excel con previsualización y validación.
 - Protección frente a ediciones concurrentes mediante versión de la causa.
 - Control de inactividad, renovación y revocación de sesiones.
-- Alta de clientes con contraseña temporal, cambio obligatorio y recuperación de acceso.
+- Alta automática de clientes al registrar una causa, contraseña temporal, cambio obligatorio y recuperación de acceso.
 - Perfil editable, agenda de pendientes y recordatorios.
-- Comunicaciones trazables, solicitudes y repositorio documental.
+- Comunicaciones trazables, solicitudes documentales con respuestas vinculadas y repositorio documental.
 - Notificaciones internas o mediante webhook externo.
-- Bandeja de movimientos con extracción local, Gemini opcional y confirmación humana.
+- Bandeja de movimientos con carga de PDF/Excel, extracción real de texto, webhook de correo, Gemini opcional y confirmación humana.
 - Asistente flotante Lexi con banco de respuestas, tolerancia a errores, historial por usuario y cuota diaria.
 
 ## Requisitos

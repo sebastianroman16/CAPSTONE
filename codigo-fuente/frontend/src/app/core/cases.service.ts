@@ -1,6 +1,6 @@
 import { inject, Injectable } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
-import { Client, LegalCase, SaveCase, ProgressEvent } from "./models";
+import { Client, CreatedCase, LegalCase, SaveCase, ProgressEvent } from "./models";
 @Injectable({ providedIn: "root" })
 export class CasesService {
   private readonly http = inject(HttpClient);
@@ -31,7 +31,7 @@ export class CasesService {
     return this.http.get<Client[]>("/api/users/clients");
   }
   create(data: SaveCase) {
-    return this.http.post<LegalCase>("/api/cases", data);
+    return this.http.post<CreatedCase>("/api/cases", data);
   }
   update(id: string, data: SaveCase, version: number) {
     return this.http.put<LegalCase>(`/api/cases/${id}`, { ...data, version });

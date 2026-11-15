@@ -40,6 +40,7 @@ export class DocumentMetadataDto {
   @IsIn(["PLEADING", "EVIDENCE", "CONTRACT", "COURT_RESOLUTION", "IDENTITY", "OTHER"])
   category!: string;
   @IsIn(["INTERNAL", "CLIENT"]) visibility!: string;
+  @IsOptional() @IsUUID() requestId?: string;
 }
 export class IngestionTextDto {
   @IsIn(["EMAIL", "TEXT"]) sourceType!: string;
@@ -51,6 +52,12 @@ export class ReviewIngestionDto {
   @IsIn(["CONFIRMED", "REJECTED"]) status!: string;
   @IsOptional() @Transform(trim) @IsString() @MinLength(10) @MaxLength(2000)
   summary?: string;
+}
+export class IncomingEmailDto {
+  @Transform(trim) @IsString() @MinLength(3) @MaxLength(255) messageId!: string;
+  @Transform(trim) @IsEmail() @MaxLength(254) lawyerEmail!: string;
+  @Transform(trim) @IsString() @MinLength(3) @MaxLength(255) subject!: string;
+  @Transform(trim) @IsString() @MinLength(10) @MaxLength(100000) text!: string;
 }
 export class CreateClientDto {
   @Transform(trim) @IsString() @MinLength(3) @MaxLength(160) name!: string;

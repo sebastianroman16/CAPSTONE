@@ -121,20 +121,43 @@
         />
       </div>
     </div>
-    <div class="field">
-      <label for="client">Cliente</label
-      ><select id="client" formControlName="clientId">
-        <option value="">Selecciona un cliente</option>
-        @for (client of clients(); track client.id) {
-        <option [value]="client.id">{{ client.name }}</option>
-        }</select
-      >@if (!clients().length) {
-      <small
-        >No hay clientes asociados a tu cuenta. Solicita su alta al
-        administrador.</small
-      >
-      }
-    </div>
+    @if (!id) {
+    <fieldset class="priority-options">
+      <legend>¿Quién es el cliente?</legend>
+      <label><input type="radio" name="clientMode" [checked]="clientMode()==='existing'" (change)="setClientMode('existing')" /> Cliente existente</label>
+      <label><input type="radio" name="clientMode" [checked]="clientMode()==='new'" (change)="setClientMode('new')" /> Crear cliente nuevo</label>
+    </fieldset>
+    }
+    @if (clientMode() === 'existing' || id) {
+      <div class="field">
+        <label for="client">Cliente</label>
+        <select id="client" formControlName="clientId">
+          <option value="">Selecciona un cliente</option>
+          @for (client of clients(); track client.id) {
+          <option [value]="client.id">{{ client.name }} · {{ client.email }}</option>
+          }
+        </select>
+        @if (!clients().length && !id) {
+          <small>No hay clientes en tu cartera. Selecciona “Crear cliente nuevo”.</small>
+        }
+      </div>
+    } @else {
+      <div class="grid-2">
+        <div class="field">
+          <label for="new-client-name">Nombre completo</label>
+          <input id="new-client-name" formControlName="newClientName" autocomplete="name" maxlength="160" />
+        </div>
+        <div class="field">
+          <label for="new-client-email">Correo</label>
+          <input id="new-client-email" type="email" formControlName="newClientEmail" autocomplete="email" maxlength="254" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="new-client-phone">Teléfono <span class="muted">(opcional)</span></label>
+        <input id="new-client-phone" formControlName="newClientPhone" autocomplete="tel" maxlength="30" placeholder="+56 9…" />
+        <small>Se creará la cuenta junto con la causa. El cliente deberá cambiar su contraseña temporal al ingresar.</small>
+      </div>
+    }
   </section>
   <section class="card">
     <h2>Detalle de la causa</h2>
@@ -219,10 +242,25 @@
     ><button
       class="button primary"
       type="submit"
-      [disabled]="busy() || conflict() || !clients().length"
+      [disabled]="busy() || conflict() || (clientMode() === 'existing' && !clients().length)"
     >
       {{ busy() ? 'Guardando…' : id ? 'Guardar cambios' : 'Guardar causa' }}
     </button>
   </div>
 </form>
+@if (onboarding(); as access) {
+<div class="session-backdrop">
+  <section class="session-dialog" role="dialog" aria-modal="true" aria-labelledby="client-created-title">
+    <p class="eyebrow">Cuenta creada correctamente</p>
+    <h2 id="client-created-title">Entrega el acceso temporal al cliente</h2>
+    <p>La causa y la cuenta se guardaron. Esta contraseña se muestra una sola vez y el cliente tendrá que reemplazarla al iniciar sesión.</p>
+    <div class="field">
+      <label for="temporary-password">Contraseña temporal</label>
+      <input id="temporary-password" [value]="access.temporaryPassword || 'Enviada por el proveedor configurado'" readonly />
+    </div>
+    <p class="muted">Estado del envío automático: {{ access.deliveryStatus === 'DELIVERED' ? 'enviado' : access.deliveryStatus === 'FAILED' ? 'falló; compártela por un canal seguro' : 'proveedor no configurado; compártela por un canal seguro' }}.</p>
+    <button type="button" class="button primary full" (click)="openCreatedCase()">Continuar a la causa</button>
+  </section>
+</div>
+}
 }

@@ -84,6 +84,22 @@
       <option>Archivada</option>
     </select>
   </div>
+  <div class="field">
+    <label for="sort-by">Ordenar por</label>
+    <select id="sort-by" [ngModel]="sortBy()" (ngModelChange)="sortBy.set($event)">
+      <option value="priority">Prioridad</option>
+      <option value="client">Cliente</option>
+      <option value="matter">Materia</option>
+      <option value="date">Próxima fecha</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="sort-direction">Dirección</label>
+    <select id="sort-direction" [ngModel]="sortDirection()" (ngModelChange)="sortDirection.set($event)">
+      <option value="asc">Ascendente</option>
+      <option value="desc">Descendente</option>
+    </select>
+  </div>
   <button class="text-button" (click)="reset()">Limpiar</button>
 </section>
 <div class="table-card">

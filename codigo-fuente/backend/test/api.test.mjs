@@ -100,6 +100,7 @@ describe("API real con PostgreSQL y esquema aislado", () => {
         NODE_ENV: "test",
         PORT: String(port),
         FRONTEND_ORIGIN: "http://localhost:4200",
+        INGESTION_WEBHOOK_SECRET: "integration-webhook-secret",
       };
       execFileSync(process.execPath, ["scripts/migrate.mjs"], { env });
       execFileSync(process.execPath, ["scripts/migrate.mjs"], { env });
@@ -1016,6 +1017,9 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.equal(login.status, 201);
     assert.equal(login.json.mustChangePassword, true);
     const cookie = login.cookie.split(";")[0];
+    const blocked = await request("/cases", "GET", undefined, cookie);
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.json.code, "PASSWORD_CHANGE_REQUIRED");
     const changed = await request("/auth/change-password", "POST", {
       currentPassword: createdClient.json.temporaryPassword,
       newPassword: "Nueva-clave-segura-2026",
@@ -1023,6 +1027,36 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.equal(changed.status, 201);
     assert.equal((await request("/auth/me", "GET", undefined, cookie)).status, 401);
     assert.equal(await verifyPassword("Nueva-clave-segura-2026",(await db.query("SELECT password_hash FROM users WHERE email=$1",[email])).rows[0].password_hash),true);
+  });
+  it("crea cliente y causa en una sola transacción sin duplicar correos", async () => {
+    const email=`causa-cliente-${randomBytes(4).toString("hex")}@example.test`;
+    const createdCase=await request("/cases","POST",{
+      ...payload,
+      clientId:undefined,
+      title:"Causa con alta automática",
+      newClientName:"Cliente desde causa",
+      newClientEmail:email,
+      newClientPhone:"+56922223333",
+    },lawyerCookie);
+    assert.equal(createdCase.status,201,JSON.stringify(createdCase.json));
+    assert.equal(createdCase.json.onboarding.clientCreated,true);
+    assert.ok(createdCase.json.onboarding.temporaryPassword.length>=12);
+    const persisted=await db.query(
+      `SELECT c.id,u.email,u.must_change_password FROM cases c JOIN users u ON u.id=c.client_id WHERE c.id=$1`,
+      [createdCase.json.id],
+    );
+    assert.equal(persisted.rows[0].email,email);
+    assert.equal(persisted.rows[0].must_change_password,true);
+    const reused=await request("/cases","POST",{
+      ...payload,
+      clientId:undefined,
+      title:"Segunda causa del mismo cliente",
+      newClientName:"Nombre no debe duplicar",
+      newClientEmail:email,
+    },lawyerCookie);
+    assert.equal(reused.status,201);
+    assert.equal(reused.json.onboarding.clientCreated,false);
+    assert.equal(Number((await db.query("SELECT count(*) FROM users WHERE email=$1",[email])).rows[0].count),1);
   });
   it("gestiona agenda, comunicaciones y notificaciones del cliente", async () => {
     const caseId = "33333333-3333-4333-8333-333333333333";
@@ -1041,16 +1075,35 @@ describe("API real con PostgreSQL y esquema aislado", () => {
   });
   it("completa solicitudes documentales e ingesta con confirmación humana", async () => {
     const caseId = "33333333-3333-4333-8333-333333333333";
-    assert.equal((await request(`/cases/${caseId}/document-requests`, "POST", {assignedTo:clientId,title:"Cédula de identidad"}, lawyerCookie)).status, 201);
+    const documentRequest=await request(`/cases/${caseId}/document-requests`, "POST", {assignedTo:clientId,title:"Cédula de identidad"}, lawyerCookie);
+    assert.equal(documentRequest.status, 201);
+    const untouchedRequest=await request(`/cases/${caseId}/document-requests`, "POST", {assignedTo:clientId,title:"Certificado adicional"}, lawyerCookie);
+    assert.equal(untouchedRequest.status,201);
     const form = new FormData();
     form.append("file",new Blob(["documento ficticio"],{type:"text/plain"}),"cedula.txt");
     form.append("title","Documento ficticio");form.append("category","IDENTITY");form.append("visibility","CLIENT");
+    form.append("requestId",documentRequest.json.id);
     const uploaded = await fetch(`${base}/cases/${caseId}/documents`,{method:"POST",headers:{cookie:clientCookie},body:form});
     assert.equal(uploaded.status,201);
+    const fulfilled=await db.query("SELECT status,fulfilled_document_id FROM document_requests WHERE id=$1",[documentRequest.json.id]);
+    assert.equal(fulfilled.rows[0].status,"FULFILLED");
+    assert.ok(fulfilled.rows[0].fulfilled_document_id);
+    assert.equal((await db.query("SELECT status FROM document_requests WHERE id=$1",[untouchedRequest.json.id])).rows[0].status,"PENDING");
     const ingested = await request("/ingestion/text","POST",{sourceType:"EMAIL",sourceName:"Correo PJUD",caseId,text:"Tribunal: Juzgado de Familia. Resolución causa LC-1 con fecha 2026-12-19."},lawyerCookie);
     assert.equal(ingested.status,201);
     const reviewed = await request(`/ingestion/${ingested.json.id}/review`,"PATCH",{status:"CONFIRMED",summary:"El tribunal emitió una resolución que fue revisada por el abogado."},lawyerCookie);
     assert.equal(reviewed.status,200);
+  });
+  it("recibe correos judiciales automáticamente sin duplicarlos",async()=>{
+    const payload={messageId:`mail-${randomBytes(4).toString("hex")}`,lawyerEmail:"abogado@example.test",subject:"Notificación causa LC-1",text:"Tribunal: Juzgado Civil. Resolución de la causa LC-1 con fecha 2026-12-22."};
+    const send=()=>fetch(`${base}/webhooks/ingestion/email`,{method:"POST",headers:{"content-type":"application/json","x-ingestion-secret":"integration-webhook-secret"},body:JSON.stringify(payload)});
+    assert.equal((await fetch(`${base}/webhooks/ingestion/email`,{method:"POST",headers:{"content-type":"application/json","x-ingestion-secret":"incorrecto"},body:JSON.stringify(payload)})).status,401);
+    const first=await send();
+    assert.equal(first.status,201);
+    const second=await send();
+    assert.equal(second.status,201);
+    assert.equal((await second.json()).duplicate,true);
+    assert.equal(Number((await db.query("SELECT count(*) FROM ingestion_items WHERE external_message_id=$1",[payload.messageId])).rows[0].count),1);
   });
   it("responde preguntas aproximadas, persiste historial por usuario y descuenta cuota", async () => {
     const initial=await request("/assistant","GET",undefined,lawyerCookie);

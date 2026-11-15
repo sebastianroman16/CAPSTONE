@@ -11,7 +11,7 @@ import { IsEmail, IsString, MaxLength, MinLength } from "class-validator";
 import { Request, Response } from "express";
 import { Throttle } from "@nestjs/throttler";
 import { AuthService } from "./auth.service";
-import { AuthGuard, AuthRequest } from "./auth.guard";
+import { AllowTemporaryPassword, AuthGuard, AuthRequest } from "./auth.guard";
 class LoginDto {
   @IsEmail() @MaxLength(254) email!: string;
   @IsString() @MinLength(1) @MaxLength(128) password!: string;
@@ -46,11 +46,13 @@ export class AuthController {
   }
   @Get("me")
   @UseGuards(AuthGuard)
+  @AllowTemporaryPassword()
   me(@Req() req: AuthRequest) {
     return req.user;
   }
   @Post("extend")
   @UseGuards(AuthGuard)
+  @AllowTemporaryPassword()
   async extend(@Req() req: AuthRequest) {
     // AuthGuard ya validó y renovó last_seen_at de forma atómica.
     return { ok: true, user: req.user };
@@ -63,6 +65,7 @@ export class AuthController {
   }
   @Post("change-password")
   @UseGuards(AuthGuard)
+  @AllowTemporaryPassword()
   changePassword(@Req() req: AuthRequest,@Body() dto:ChangePasswordDto){
     return this.auth.changePassword(req.user,dto.currentPassword,dto.newPassword);
   }

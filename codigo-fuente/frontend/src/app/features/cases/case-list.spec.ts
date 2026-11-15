@@ -7,6 +7,7 @@ import {
 import { provideRouter } from "@angular/router";
 import { CaseList } from "./case-list";
 import { LegalCase } from "../../core/models";
+import { AuthService } from "../../core/auth.service";
 
 describe("Panel de causas", () => {
   let component: CaseList;
@@ -75,5 +76,20 @@ describe("Panel de causas", () => {
     http.expectOne("/api/cases").flush([]);
     expect(component.error()).toBe("");
     expect(component.filtered()).toEqual([]);
+  });
+  it("ordena por cliente, materia y prioridad en ambas direcciones", () => {
+    TestBed.inject(AuthService).user.set({id:"lawyer",name:"Abogada",email:"abogada@example.test",role:"LAWYER"});
+    http.expectOne("/api/cases").flush([
+      { ...base, id: "1", clientName: "Zoe", priority: "Alta", matter: "Familia" },
+      { ...base, id: "2", clientName: "Ana", priority: "Baja", matter: "Civil" },
+    ]);
+    component.sortBy.set("client");
+    component.sortDirection.set("asc");
+    expect(component.filtered().map(item=>item.id)).toEqual(["2","1"]);
+    component.sortDirection.set("desc");
+    expect(component.filtered().map(item=>item.id)).toEqual(["1","2"]);
+    component.sortBy.set("priority");
+    component.sortDirection.set("asc");
+    expect(component.filtered().map(item=>item.id)).toEqual(["1","2"]);
   });
 });

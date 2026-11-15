@@ -57,6 +57,11 @@ export const authenticated: CanActivateFn = async () => {
     router = inject(Router);
   return (await auth.restore()) || router.createUrlTree(["/iniciar-sesion"]);
 };
+export const passwordChanged: CanActivateFn = (_route, state) => {
+  const auth = inject(AuthService), router = inject(Router);
+  if (!auth.user()?.mustChangePassword || state.url.startsWith("/perfil")) return true;
+  return router.createUrlTree(["/perfil"], { queryParams: { required: "password" } });
+};
 export const lawyerOnly: CanActivateFn = () =>
   inject(AuthService).isLawyer() ||
   inject(Router).createUrlTree([inject(AuthService).home()]);
@@ -74,6 +79,9 @@ export const sessionInterceptor: HttpInterceptorFn = (req, next) => {
       if (error.status === 401 && !req.url.endsWith("/auth/login")) {
         auth.user.set(null);
         void router.navigateByUrl("/iniciar-sesion");
+      }
+      if (error.status === 403 && error.error?.code === "PASSWORD_CHANGE_REQUIRED") {
+        void router.navigate(["/perfil"], { queryParams: { required: "password" } });
       }
       return throwError(() => error);
     }),

@@ -4,6 +4,7 @@ import {
   lawyerOnly,
   supervisorOnly,
   caseAccess,
+  passwordChanged,
 } from "./core/auth.service";
 import { protectUnsavedChanges } from "./core/unsaved-changes.service";
 export const routes: Routes = [
@@ -16,6 +17,7 @@ export const routes: Routes = [
   {
     path: "",
     canActivate: [authenticated],
+    canActivateChild: [passwordChanged],
     loadComponent: () => import("./layout/shell").then((m) => m.Shell),
     children: [
       { path: "", pathMatch: "full", redirectTo: "causas" },

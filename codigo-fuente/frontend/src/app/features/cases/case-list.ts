@@ -20,6 +20,8 @@ export class CaseList {
   readonly matter = signal("");
   readonly priority = signal("");
   readonly status = signal("Activa");
+  readonly sortBy = signal<"priority" | "client" | "matter" | "date">("priority");
+  readonly sortDirection = signal<"asc" | "desc">("asc");
   readonly stageLabel = stageLabel;
   readonly active = computed(() =>
     this.cases().filter((c) => c.status === "Activa"),
@@ -43,11 +45,22 @@ export class CaseList {
             .toLocaleLowerCase("es")
             .includes(q)),
     );
-    if (this.auth.isLawyer()) return matches;
-    return [...matches].sort((a, b) => {
+    if (!this.auth.isLawyer()) return [...matches].sort((a, b) => {
       if (!a.nextDate) return 1;
       if (!b.nextDate) return -1;
       return a.nextDate.localeCompare(b.nextDate);
+    });
+    const priority = { Alta: 0, Media: 1, Baja: 2 } as const;
+    const direction = this.sortDirection() === "asc" ? 1 : -1;
+    return [...matches].sort((a, b) => {
+      const comparison = this.sortBy() === "priority"
+        ? priority[a.priority] - priority[b.priority]
+        : this.sortBy() === "client"
+          ? a.clientName.localeCompare(b.clientName, "es", { sensitivity: "base" })
+          : this.sortBy() === "matter"
+            ? a.matter.localeCompare(b.matter, "es", { sensitivity: "base" })
+            : (a.nextDate ?? "9999-12-31").localeCompare(b.nextDate ?? "9999-12-31");
+      return comparison * direction || a.reference.localeCompare(b.reference, "es", { numeric: true });
     });
   });
   constructor() {
@@ -72,5 +85,7 @@ export class CaseList {
     this.matter.set("");
     this.priority.set("");
     this.status.set("Activa");
+    this.sortBy.set("priority");
+    this.sortDirection.set("asc");
   }
 }

@@ -9,9 +9,10 @@ import {
 } from "@angular/core";
 import { HttpErrorResponse } from "@angular/common/http";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
+import { Observable } from "rxjs";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { CasesService } from "../../core/cases.service";
-import { Client, LegalCase, SaveCase } from "../../core/models";
+import { CaseOnboarding, Client, CreatedCase, LegalCase, SaveCase } from "../../core/models";
 import { errorMessage } from "../../core/auth.service";
 import { UnsavedChangesService } from "../../core/unsaved-changes.service";
 const fields: { key: keyof SaveCase; label: string }[] = [
@@ -47,6 +48,9 @@ export class CaseForm implements OnDestroy {
   readonly latest = signal<LegalCase | null>(null);
   readonly reviewBusy = signal(false);
   readonly reviewError = signal("");
+  readonly clientMode = signal<"existing" | "new">("existing");
+  readonly onboarding = signal<CaseOnboarding | null>(null);
+  readonly createdCaseId = signal("");
   readonly discardConfirm = signal(false);
   readonly form = inject(FormBuilder).nonNullable.group({
     title: [
@@ -54,6 +58,9 @@ export class CaseForm implements OnDestroy {
       [Validators.required, Validators.minLength(3), Validators.maxLength(200)],
     ],
     clientId: ["", Validators.required],
+    newClientName: ["", [Validators.maxLength(160)]],
+    newClientEmail: ["", [Validators.email, Validators.maxLength(254)]],
+    newClientPhone: ["", [Validators.maxLength(30)]],
     rit: ["", Validators.maxLength(50)],
     matter: ["Familia", Validators.required],
     court: [
@@ -89,6 +96,9 @@ export class CaseForm implements OnDestroy {
     return {
       title: item.title,
       clientId: item.clientId,
+      newClientName: "",
+      newClientEmail: "",
+      newClientPhone: "",
       rit: item.rit ?? "",
       matter: item.matter,
       court: item.court,
@@ -97,6 +107,30 @@ export class CaseForm implements OnDestroy {
       nextDateLabel: item.nextDateLabel ?? "",
       internalNotes: item.internalNotes ?? "",
     };
+  }
+  setClientMode(mode: "existing" | "new") {
+    if (this.id) return;
+    this.clientMode.set(mode);
+    const clientId = this.form.controls.clientId;
+    const name = this.form.controls.newClientName;
+    const email = this.form.controls.newClientEmail;
+    if (mode === "new") {
+      clientId.clearValidators();
+      clientId.setValue("");
+      name.setValidators([Validators.required, Validators.minLength(3), Validators.maxLength(160)]);
+      email.setValidators([Validators.required, Validators.email, Validators.maxLength(254)]);
+    } else {
+      clientId.setValidators([Validators.required]);
+      name.clearValidators();
+      email.setValidators([Validators.email, Validators.maxLength(254)]);
+      name.setValue("");
+      email.setValue("");
+      this.form.controls.newClientPhone.setValue("");
+    }
+    clientId.updateValueAndValidity();
+    name.updateValueAndValidity();
+    email.updateValueAndValidity();
+    this.form.markAsDirty();
   }
   private apply(item: LegalCase) {
     this.reference.set(item.reference);
@@ -184,9 +218,25 @@ export class CaseForm implements OnDestroy {
     this.busy.set(true);
     this.error.set("");
     const raw = this.form.getRawValue();
-    const data: SaveCase = { ...raw, nextDate: raw.nextDate || null };
+    const data: SaveCase = {
+      title: raw.title,
+      rit: raw.rit,
+      matter: raw.matter,
+      court: raw.court,
+      priority: raw.priority,
+      nextDate: raw.nextDate || null,
+      nextDateLabel: raw.nextDateLabel,
+      internalNotes: raw.internalNotes,
+      ...(this.clientMode() === "new" && !this.id
+        ? {
+            newClientName: raw.newClientName,
+            newClientEmail: raw.newClientEmail,
+            newClientPhone: raw.newClientPhone || undefined,
+          }
+        : { clientId: raw.clientId }),
+    };
     this.form.disable();
-    const request = this.id
+    const request: Observable<LegalCase | CreatedCase> = this.id
       ? this.api.update(this.id, data, this.version())
       : this.api.create(data);
     request.subscribe({
@@ -194,7 +244,10 @@ export class CaseForm implements OnDestroy {
         this.form.enable();
         this.form.markAsPristine();
         this.busy.set(false);
-        void this.router.navigate(["/causas", item.id]);
+        if (!this.id && "onboarding" in item && item.onboarding?.clientCreated) {
+          this.onboarding.set(item.onboarding);
+          this.createdCaseId.set(item.id);
+        } else void this.router.navigate(["/causas", item.id]);
       },
       error: (e: HttpErrorResponse) => {
         this.form.enable();
@@ -209,5 +262,9 @@ export class CaseForm implements OnDestroy {
         } else this.error.set(errorMessage(e));
       },
     });
+  }
+  openCreatedCase() {
+    const id = this.createdCaseId();
+    if (id) void this.router.navigate(["/causas", id]);
   }
 }

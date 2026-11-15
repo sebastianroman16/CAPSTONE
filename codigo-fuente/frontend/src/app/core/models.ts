@@ -102,7 +102,10 @@ export interface SupervisionDashboard {
 }
 export interface SaveCase {
   title: string;
-  clientId: string;
+  clientId?: string;
+  newClientName?: string;
+  newClientEmail?: string;
+  newClientPhone?: string;
   rit: string;
   matter: string;
   court: string;
@@ -111,6 +114,12 @@ export interface SaveCase {
   nextDateLabel: string;
   internalNotes: string;
 }
+export interface CaseOnboarding {
+  clientCreated: boolean;
+  temporaryPassword?: string;
+  deliveryStatus?: "DELIVERED" | "PENDING" | "FAILED";
+}
+export type CreatedCase = LegalCase & { onboarding?: CaseOnboarding };
 
 export type ImportField =
   | "clientEmail"

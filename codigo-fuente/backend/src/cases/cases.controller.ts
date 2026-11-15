@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard, AuthRequest } from "../auth/auth.guard";
-import { SaveCaseDto, UpdateCaseDto, ArchiveCaseDto } from "./case.dto";
+import { CreateCaseDto, UpdateCaseDto, ArchiveCaseDto } from "./case.dto";
 import { CasesService } from "./cases.service";
 import { ProgressDto } from "./progress.dto";
 import { ProgressService } from "./progress.service";
@@ -44,7 +44,7 @@ export class CasesController {
   ) {
     return this.cases.find(id, req.user);
   }
-  @Post() create(@Body() dto: SaveCaseDto, @Req() req: AuthRequest) {
+  @Post() create(@Body() dto: CreateCaseDto, @Req() req: AuthRequest) {
     return this.cases.create(dto, req.user);
   }
   @Put(":id") update(
