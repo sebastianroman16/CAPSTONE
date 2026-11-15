@@ -1071,6 +1071,24 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.notEqual(fresh.json.conversationId,initial.json.conversationId);
     assert.equal(fresh.json.messages.length,0);
   });
+  it("responde por una causa específica sin exponer causas ajenas", async () => {
+    const lawyerAnswer=await request("/assistant/messages","POST",{message:"¿Cuál es el estado de la causa LC-1?"},lawyerCookie);
+    assert.equal(lawyerAnswer.status,201);
+    assert.equal(lawyerAnswer.json.matched,true);
+    assert.match(lawyerAnswer.json.content,/causa LC-1/i);
+    assert.match(lawyerAnswer.json.content,/está activa/i);
+    assert.match(lawyerAnswer.json.content,/Familia/i);
+
+    const clientAnswer=await request("/assistant/messages","POST",{message:"Resume mi causa LC-1 y su próxima fecha"},clientCookie);
+    assert.equal(clientAnswer.status,201);
+    assert.match(clientAnswer.json.content,/Pensión de alimentos/i);
+    assert.doesNotMatch(clientAnswer.json.content,/SECRETO INTERNO/i);
+
+    await db.query("UPDATE users SET active=true WHERE id=$1",[otherId]);
+    const forbidden=await request("/assistant/messages","POST",{message:"¿Cuál es el estado de la causa LC-1?"},otherCookie);
+    assert.equal(forbidden.status,201);
+    assert.match(forbidden.json.content,/No encontré una causa accesible/i);
+  });
   it("invalida sesiones al cerrar sesión y al expirar", async () => {
     assert.equal(
       (await request("/auth/logout", "POST", {}, clientCookie)).status,
