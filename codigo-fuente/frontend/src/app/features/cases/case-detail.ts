@@ -30,7 +30,7 @@ import { CaseWorkspace } from "./case-workspace";
           <h1>{{ c.title }}</h1>
           <p class="muted">{{ c.clientName }}</p>
         </div>
-        @if (auth.isLawyer()) {
+        @if (auth.isLawyer() && c.status !== "Archivada") {
           <a class="button" [routerLink]="['/causas', c.id, 'editar']"
             >Editar causa</a
           >
@@ -164,6 +164,22 @@ import { CaseWorkspace } from "./case-workspace";
               </button>
             }
           </div>
+        } @else {
+          <div class="form-actions">
+            <span class="muted">Causa archivada: es de solo lectura.</span>
+            @if (confirmReactivate()) {
+              <span>¿Reactivar esta causa?</span
+              ><button class="button" (click)="confirmReactivate.set(false)" [disabled]="busy()">
+                Cancelar</button
+              ><button class="button primary" (click)="reactivate()" [disabled]="busy()">
+                {{ busy() ? "Reactivando…" : "Confirmar reactivación" }}
+              </button>
+            } @else {
+              <button class="button" (click)="confirmReactivate.set(true)" [disabled]="loading() || conflict()">
+                Reactivar causa
+              </button>
+            }
+          </div>
         }
       }
       <app-case-workspace [caseId]="c.id" [clientId]="c.clientId" [isLawyer]="auth.isLawyer()" />
@@ -177,6 +193,7 @@ export class CaseDetail {
   readonly loading = signal(true);
   readonly error = signal("");
   readonly confirmArchive = signal(false);
+  readonly confirmReactivate = signal(false);
   readonly conflict = signal(false);
   readonly busy = signal(false);
   readonly history = signal<ProgressEvent[]>([]);
@@ -205,6 +222,7 @@ export class CaseDetail {
     this.loading.set(true);
     this.error.set("");
     this.confirmArchive.set(false);
+    this.confirmReactivate.set(false);
     this.api.get(this.id).subscribe({
       next: (data) => {
         this.item.set(data);
@@ -214,6 +232,25 @@ export class CaseDetail {
       error: (e) => {
         this.error.set(errorMessage(e));
         this.loading.set(false);
+      },
+    });
+  }
+  reactivate() {
+    if (this.busy() || this.loading() || this.conflict() || !this.item())
+      return;
+    this.busy.set(true);
+    this.error.set("");
+    this.api.reactivate(this.id, this.item()!.version).subscribe({
+      next: (data) => {
+        this.item.set(data);
+        this.busy.set(false);
+        this.confirmReactivate.set(false);
+      },
+      error: (e) => {
+        this.busy.set(false);
+        this.error.set(errorMessage(e));
+        if (e.status === 409) this.conflict.set(true);
+        this.confirmReactivate.set(false);
       },
     });
   }

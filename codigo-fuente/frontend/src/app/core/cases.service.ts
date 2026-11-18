@@ -39,4 +39,8 @@ export class CasesService {
   archive(id: string, version: number) {
     return this.http.patch<LegalCase>(`/api/cases/${id}/archive`, { version });
   }
+  /** E22: deshace el archivo para volver a editar la causa. */
+  reactivate(id: string, version: number) {
+    return this.http.patch<LegalCase>(`/api/cases/${id}/reactivate`, { version });
+  }
 }

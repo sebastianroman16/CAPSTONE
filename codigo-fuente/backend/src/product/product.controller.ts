@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, R
 import { FileInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { AuthGuard, AuthRequest } from "../auth/auth.guard";
-import { CommunicationDto, DeadlineDto, DeadlineStatusDto, DocumentMetadataDto, DocumentRequestDto, IngestionTextDto, ReviewIngestionDto } from "./product.dto";
+import { CommunicationDto, DeadlineDto, DeadlineStatusDto, DocumentMetadataDto, DocumentRequestDto, IngestionTextDto, NotificationQueryDto, ReviewIngestionDto } from "./product.dto";
 import { ProductService } from "./product.service";
 
 @Controller()
@@ -14,7 +14,7 @@ export class ProductController {
   @Patch("deadlines/:id") deadlineStatus(@Param("id",ParseUUIDPipe)id:string,@Body()d:DeadlineStatusDto,@Req()r:AuthRequest){return this.product.deadlineStatus(id,d.status,r.user);}
   @Get("cases/:id/communications") communications(@Param("id",ParseUUIDPipe)id:string,@Req()r:AuthRequest){return this.product.communications(id,r.user);}
   @Post("cases/:id/communications") communication(@Param("id",ParseUUIDPipe)id:string,@Body()d:CommunicationDto,@Req()r:AuthRequest){return this.product.sendCommunication(id,d,r.user);}
-  @Get("notifications") notifications(@Req()r:AuthRequest){return this.product.notifications(r.user);}
+  @Get("notifications") notifications(@Req()r:AuthRequest,@Query()q:NotificationQueryDto){return this.product.notifications(r.user,q);}
   @Patch("notifications/:id/read") read(@Param("id",ParseUUIDPipe)id:string,@Req()r:AuthRequest){return this.product.readNotification(id,r.user);}
   @Get("cases/:id/documents") documents(@Param("id",ParseUUIDPipe)id:string,@Req()r:AuthRequest){return this.product.documents(id,r.user);}
   @Post("cases/:id/documents") @UseInterceptors(FileInterceptor("file",{limits:{fileSize:20*1024*1024}}))

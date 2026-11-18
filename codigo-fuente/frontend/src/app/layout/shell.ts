@@ -304,18 +304,21 @@ export class Shell implements OnInit, OnDestroy {
     if (this.busy()) return;
     this.clearTimers();
     this.busy.set(true);
+    // E15: el borrador se guarda antes de cerrar la sesión, porque logout() olvida al usuario
+    // al responder y el borrador se asocia a su id. Tras ingresar se vuelve al mismo formulario.
+    const returnUrl = this.router.url;
+    const preserved = this.unsaved.preserveAfterExpiry();
     this.auth.logout().subscribe({
-      next: () => this.finishExpiredSession(),
-      error: () => this.finishExpiredSession(),
+      next: () => this.finishExpiredSession(preserved, returnUrl),
+      error: () => this.finishExpiredSession(preserved, returnUrl),
     });
   }
 
-  private finishExpiredSession() {
+  private finishExpiredSession(preserved: boolean, returnUrl: string) {
     this.auth.user.set(null);
-    this.unsaved.discardAfterLogout();
     this.busy.set(false);
     this.inactivityWarning.set(false);
-    void this.router.navigateByUrl("/iniciar-sesion");
+    void this.router.navigate(["/iniciar-sesion"], preserved ? { queryParams: { volver: returnUrl } } : {});
   }
 
   private clearTimers() {

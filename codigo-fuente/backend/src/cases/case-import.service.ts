@@ -314,8 +314,9 @@ export class CaseImportService {
     query: Query,
   ) {
     const clients = await query(
-      `SELECT id,name,email FROM users
-       WHERE role='CLIENT' AND lawyer_id=$1 AND active=true`,
+      `SELECT u.id,u.name,u.email FROM users u
+       JOIN lawyer_client_assignments a ON a.client_id=u.id AND a.ended_at IS NULL
+       WHERE u.role='CLIENT' AND a.lawyer_id=$1 AND u.active=true`,
       [lawyerId],
     );
     const clientByEmail = new Map<string, any>(
@@ -363,7 +364,7 @@ export class CaseImportService {
         errors.push("Tribunal inválido");
       if (!data.priority) errors.push("Prioridad no permitida");
       if (data.rit.length > 50) errors.push("El RIT supera 50 caracteres");
-      if (data.nextDate === false) errors.push("Fecha inválida; usa AAAA-MM-DD");
+      if (data.nextDate === false) errors.push("Fecha inválida; usa DD-MM-AAAA o AAAA-MM-DD");
       if (data.nextDateLabel.length > 200) errors.push("La descripción de fecha supera 200 caracteres");
       if (data.internalNotes.length > 5000) errors.push("Las notas superan 5000 caracteres");
       if (data.nextDate === false) data.nextDate = "";
@@ -406,7 +407,8 @@ export class CaseImportService {
     }
     const text = String(value).trim();
     let iso = text;
-    const local = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    // Formatos chilenos dd-mm-aaaa, dd/mm/aaaa y dd.mm.aaaa (E11).
+    const local = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
     if (local)
       iso = `${local[3]}-${local[2].padStart(2, "0")}-${local[1].padStart(2, "0")}`;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;

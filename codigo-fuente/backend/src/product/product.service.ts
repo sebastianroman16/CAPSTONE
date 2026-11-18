@@ -2,7 +2,10 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
@@ -18,14 +21,65 @@ import {
   IngestionTextDto,
   ReviewIngestionDto,
 } from "./product.dto";
+import { excelCellText, excelRowsToMovements, extractMovement, normalizeReference } from "./ingestion-rules";
+import { documentRejection, ingestionRejection } from "./file-signature";
 
 const STORAGE_ROOT = resolve(
   process.env.DOCUMENT_STORAGE_PATH || join(process.cwd(), ".data", "documents"),
 );
+const MAX_EXCEL_MOVEMENTS = 200;
+/** Fecha de hoy en Chile (AAAA-MM-DD), independiente de la zona horaria del servidor. */
+const chileToday = (offsetDays = 0) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(Date.now() + offsetDays * 86400000));
+const isRealDate = (value: string) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
 
 @Injectable()
-export class ProductService {
+export class ProductService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(ProductService.name);
+  private reminderTimer?: NodeJS.Timeout;
+  private dispatchingReminders = false;
   constructor(private readonly db: DatabaseService) {}
+
+  // HU-12: revisa periódicamente los recordatorios vencidos y los convierte en notificaciones.
+  onModuleInit() {
+    const interval = Number(process.env.REMINDER_INTERVAL_MS ?? 60000);
+    if (!Number.isFinite(interval) || interval <= 0) return;
+    const run = () => void this.dispatchReminders().catch((error) =>
+      this.logger.error(`No fue posible enviar recordatorios: ${error?.message ?? error}`));
+    this.reminderTimer = setInterval(run, interval);
+    this.reminderTimer.unref();
+    run();
+  }
+  onModuleDestroy() {
+    if (this.reminderTimer) clearInterval(this.reminderTimer);
+  }
+  /** Marca y notifica en una sola sentencia: cada recordatorio se envía una vez aunque haya varias instancias. */
+  async dispatchReminders() {
+    if (this.dispatchingReminders) return 0;
+    this.dispatchingReminders = true;
+    try {
+      const result = await this.db.query(
+        `WITH due AS (
+           UPDATE case_deadlines d SET reminder_sent_at=now()
+           FROM cases c
+           WHERE c.id=d.case_id AND d.status='PENDING' AND d.reminder_sent_at IS NULL
+             AND d.reminder_at IS NOT NULL AND d.reminder_at<=now() AND c.status<>'Archivada'
+           RETURNING d.case_id,d.title,d.due_at,d.urgency,c.lawyer_id,c.reference
+         )
+         INSERT INTO notifications(user_id,case_id,notification_type,title,body)
+         SELECT lawyer_id,case_id,'DEADLINE',left('Recordatorio: '||title,200),
+           left(reference||' · vence el '||to_char(due_at AT TIME ZONE 'America/Santiago','DD-MM-YYYY HH24:MI')||' · urgencia '||lower(urgency),1000)
+         FROM due`,
+      );
+      return result.rowCount ?? 0;
+    } finally {
+      this.dispatchingReminders = false;
+    }
+  }
 
   private lawyer(user: SessionUser) {
     if (user.role !== "LAWYER") throw new ForbiddenException("Acción reservada al abogado.");
@@ -46,8 +100,8 @@ export class ProductService {
   }
 
   async agenda(user: SessionUser, from?: string, to?: string) {
-    const start = from || new Date().toISOString().slice(0, 10);
-    const end = to || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const start = from || chileToday();
+    const end = to || chileToday(7);
     const owner = user.role === "LAWYER" ? "c.lawyer_id" : user.role === "CLIENT" ? "c.client_id" : null;
     const values: unknown[] = [start, end];
     const scope = owner ? `AND ${owner}=$3` : "";
@@ -55,9 +109,9 @@ export class ProductService {
     return (await this.db.query(
       `SELECT d.id,d.case_id AS "caseId",c.reference,c.title AS "caseTitle",
        d.deadline_type AS "deadlineType",d.title,d.description,d.due_at AS "dueAt",
-       d.reminder_at AS "reminderAt",d.status
+       d.reminder_at AS "reminderAt",d.urgency,d.status
        FROM case_deadlines d JOIN cases c ON c.id=d.case_id
-       WHERE d.due_at >= $1::date AND d.due_at < ($2::date + interval '1 day') ${scope}
+       WHERE (d.due_at AT TIME ZONE 'America/Santiago')::date BETWEEN $1::date AND $2::date ${scope}
        ORDER BY d.due_at`, values,
     )).rows;
   }
@@ -66,15 +120,16 @@ export class ProductService {
     if (dto.reminderAt && new Date(dto.reminderAt) > new Date(dto.dueAt))
       throw new BadRequestException("El recordatorio no puede ser posterior al plazo.");
     return (await this.db.query(
-      `INSERT INTO case_deadlines(case_id,created_by,deadline_type,title,description,due_at,reminder_at)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,case_id AS "caseId",deadline_type AS "deadlineType",title,description,due_at AS "dueAt",reminder_at AS "reminderAt",status`,
-      [caseId,user.id,dto.deadlineType,dto.title,dto.description||null,dto.dueAt,dto.reminderAt||null],
+      `INSERT INTO case_deadlines(case_id,created_by,deadline_type,title,description,due_at,reminder_at,urgency)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,case_id AS "caseId",deadline_type AS "deadlineType",title,description,due_at AS "dueAt",reminder_at AS "reminderAt",urgency,status`,
+      [caseId,user.id,dto.deadlineType,dto.title,dto.description||null,dto.dueAt,dto.reminderAt||null,dto.urgency||"Media"],
     )).rows[0];
   }
   async deadlineStatus(id: string, status: string, user: SessionUser) {
     this.lawyer(user);
     const result = await this.db.query(
-      `UPDATE case_deadlines d SET status=$1,completed_at=CASE WHEN $1='COMPLETED' THEN now() ELSE NULL END
+      // E25: sin el tipo explícito PostgreSQL no puede deducir $1 (varchar frente a text) y respondía 500.
+      `UPDATE case_deadlines d SET status=$1::varchar,completed_at=CASE WHEN $1::varchar='COMPLETED' THEN now() ELSE NULL END
        FROM cases c WHERE d.id=$2 AND d.case_id=c.id AND c.lawyer_id=$3
        RETURNING d.id,d.status,d.completed_at AS "completedAt"`, [status,id,user.id],
     );
@@ -117,11 +172,26 @@ export class ProductService {
     } catch { return { ok:false,error:"No fue posible contactar al proveedor." }; }
   }
 
-  async notifications(user: SessionUser) {
+  /**
+   * E24: paginación por cursor (fecha e id de la última notificación recibida).
+   * Se compara la fecha truncada a milisegundos, la misma precisión que viaja en JSON,
+   * para no saltar ni repetir notificaciones creadas en el mismo milisegundo.
+   */
+  async notifications(user: SessionUser, query: { limit?: number; before?: string; beforeId?: string } = {}) {
+    if (Boolean(query.before) !== Boolean(query.beforeId))
+      throw new BadRequestException("El cursor requiere la fecha y el id de la última notificación.");
+    const limit = query.limit ?? 30;
+    const values: unknown[] = [user.id, limit];
+    let cursor = "";
+    if (query.before && query.beforeId) {
+      values.push(query.before, query.beforeId);
+      cursor = `AND (date_trunc('milliseconds',created_at),id) < ($3::timestamptz,$4::uuid)`;
+    }
     return (await this.db.query(
       `SELECT id,case_id AS "caseId",notification_type AS "type",title,body,channel,
        delivery_status AS "deliveryStatus",read_at AS "readAt",created_at AS "createdAt"
-       FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`,[user.id],
+       FROM notifications WHERE user_id=$1 ${cursor}
+       ORDER BY date_trunc('milliseconds',created_at) DESC,id DESC LIMIT $2`,values,
     )).rows;
   }
   async readNotification(id: string,user:SessionUser){
@@ -145,6 +215,8 @@ export class ProductService {
     if(file.size>20*1024*1024) throw new BadRequestException("El archivo supera 20 MB.");
     const allowed=["application/pdf","image/png","image/jpeg","text/plain","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if(!allowed.includes(file.mimetype)) throw new BadRequestException("Tipo de archivo no permitido.");
+    const rejection=documentRejection(file.mimetype,file.originalname,file.buffer);
+    if(rejection) throw new BadRequestException(rejection);
     return file;
   }
   async uploadDocument(caseId:string,meta:DocumentMetadataDto,file:Express.Multer.File|undefined,user:SessionUser){
@@ -178,6 +250,21 @@ export class ProductService {
         );
         if(!fulfilled.rowCount) throw new BadRequestException("La solicitud ya fue respondida o dejó de estar disponible.");
       }
+      // HU-17: el cliente se entera de un documento nuevo visible. CU-04, paso 6: el abogado se entera de la respuesta.
+      if(user.role==="CLIENT"){
+        const responded=Boolean(meta.requestId);
+        await client.query(
+          `INSERT INTO notifications(user_id,case_id,notification_type,title,body) VALUES($1,$2,$3,$4,$5)`,
+          [legalCase.lawyer_id,caseId,responded?"DOCUMENT_REQUEST":"CASE_UPDATE",
+           responded?"El cliente respondió una solicitud de documento":"El cliente subió un documento",
+           `${legalCase.reference}: ${meta.title}`.slice(0,1000)],
+        );
+      } else if(meta.visibility==="CLIENT"){
+        await client.query(
+          `INSERT INTO notifications(user_id,case_id,notification_type,title,body) VALUES($1,$2,'CASE_UPDATE','Nuevo documento disponible',$3)`,
+          [legalCase.client_id,caseId,`${legalCase.reference}: ${meta.title}`.slice(0,1000)],
+        );
+      }
       await client.query("COMMIT"); return {id:doc.id,caseId:legalCase.id};
     }catch(e){await client.query("ROLLBACK");await unlink(join(STORAGE_ROOT,key)).catch(()=>undefined);throw e;}finally{client.release();}
   }
@@ -203,7 +290,21 @@ export class ProductService {
     return (await this.db.query(`SELECT r.id,r.case_id AS "caseId",c.reference,r.title,r.description,r.due_at AS "dueAt",r.status,r.created_at AS "createdAt" FROM document_requests r JOIN cases c ON c.id=r.case_id WHERE ${clause} ORDER BY r.created_at DESC`,[user.id])).rows;
   }
 
-  async ingestion(user:SessionUser){this.lawyer(user);return (await this.db.query(`SELECT id,case_id AS "caseId",source_type AS "sourceType",source_name AS "sourceName",detected_reference AS "detectedReference",detected_date AS "detectedDate",detected_court AS "detectedCourt",movement_type AS "movementType",suggested_summary AS "suggestedSummary",corrected_summary AS "correctedSummary",status,created_at AS "createdAt" FROM ingestion_items WHERE lawyer_id=$1 ORDER BY created_at DESC`,[user.id])).rows;}
+  private static readonly INGESTION_COLUMNS = `i.id,i.case_id AS "caseId",c.reference AS "caseReference",
+    i.source_type AS "sourceType",i.source_name AS "sourceName",i.detected_reference AS "detectedReference",
+    to_char(i.detected_date,'YYYY-MM-DD') AS "detectedDate",to_char(i.detected_time,'HH24:MI') AS "detectedTime",
+    i.detected_court AS "detectedCourt",i.movement_type AS "movementType",i.suggested_summary AS "suggestedSummary",
+    i.corrected_summary AS "correctedSummary",i.status,i.suggestion_source AS "suggestionSource",i.confidence,
+    i.format_recognized AS "formatRecognized",i.missing_fields AS "missingFields",i.edited,
+    i.created_at AS "createdAt",i.reviewed_at AS "reviewedAt"`;
+  async ingestion(user:SessionUser){
+    this.lawyer(user);
+    return (await this.db.query(
+      `SELECT ${ProductService.INGESTION_COLUMNS} FROM ingestion_items i LEFT JOIN cases c ON c.id=i.case_id
+       WHERE i.lawyer_id=$1 ORDER BY i.created_at DESC`,
+      [user.id],
+    )).rows;
+  }
   async ingestText(dto:IngestionTextDto,user:SessionUser){this.lawyer(user);if(dto.caseId)await this.caseAccess(dto.caseId,user,true);return this.storeIngestion(dto.sourceType,dto.sourceName,dto.text,dto.caseId,user);}
   async ingestIncomingEmail(dto:{messageId:string;lawyerEmail:string;subject:string;text:string}){
     const lawyer=(await this.db.query(
@@ -216,14 +317,9 @@ export class ProductService {
       [lawyer.id,dto.messageId],
     )).rows[0];
     if(duplicate) return {...duplicate,duplicate:true};
-    const reference=(dto.subject+"\n"+dto.text).match(/\b(?:RIT|ROL|CAUSA|LC)[\s:#-]*([A-Z0-9-]{3,30})/i)?.[1];
-    const legalCase=reference?(await this.db.query(
-      `SELECT id FROM cases WHERE lawyer_id=$1 AND
-       (upper(reference)=upper($2) OR upper(reference)=upper('LC-'||$2) OR upper(rit)=upper($2)) LIMIT 1`,
-      [lawyer.id,reference],
-    )).rows[0]:undefined;
     try{
-      return await this.storeIngestion("EMAIL",dto.subject,dto.text,legalCase?.id,{
+      // La causa se asocia en storeIngestion a partir de la referencia del asunto o del cuerpo.
+      return await this.storeIngestion("EMAIL",dto.subject,dto.text,undefined,{
         id:lawyer.id,name:lawyer.name,email:lawyer.email,role:"LAWYER",phone:lawyer.phone,mustChangePassword:Boolean(lawyer.must_change_password),
       },dto.messageId);
     }catch(error:any){
@@ -236,21 +332,33 @@ export class ProductService {
   }
   async ingestFile(file:Express.Multer.File|undefined,caseId:string|undefined,user:SessionUser){
     this.lawyer(user); if(!file)throw new BadRequestException("Selecciona un archivo."); if(file.size>10*1024*1024)throw new BadRequestException("Archivo demasiado grande."); if(caseId)await this.caseAccess(caseId,user,true);
-    let text=""; let type="TEXT";
+    const rejection=ingestionRejection(file.originalname,file.buffer);
+    if(rejection)throw new BadRequestException(rejection);
     const lowerName=file.originalname.toLowerCase();
     if(lowerName.endsWith(".xlsx")){
-      type="EXCEL";
+      // Cada fila de la planilla es un movimiento distinto; las celdas de fecha se leen como AAAA-MM-DD.
       const wb=new ExcelJS.Workbook();
       await wb.xlsx.load(file.buffer as any);
-      wb.eachSheet((sheet: ExcelJS.Worksheet)=>sheet.eachRow((row: ExcelJS.Row,rowNumber:number)=>{
-        const values=(Array.isArray(row.values)?row.values.slice(1):[]).map(value=>String(value??"").trim());
-        if(values.some(Boolean)) text+=`Fila ${rowNumber}: ${values.map((value,index)=>`Columna ${index+1}: ${value}`).join(" | ")}\n`;
-      }));
-    } else if(lowerName.endsWith(".pdf")) {
+      const movements:string[]=[];
+      wb.eachSheet((sheet: ExcelJS.Worksheet)=>{
+        const rows:string[][]=[];
+        sheet.eachRow((row: ExcelJS.Row)=>rows.push(Array.from((Array.isArray(row.values)?row.values:[]).slice(1),excelCellText)));
+        movements.push(...excelRowsToMovements(rows));
+      });
+      const texts=movements.filter(text=>text.trim().length>=10);
+      if(!texts.length)throw new BadRequestException("No fue posible extraer texto legible del archivo.");
+      if(texts.length>MAX_EXCEL_MOVEMENTS)throw new BadRequestException(`La planilla supera el máximo de ${MAX_EXCEL_MOVEMENTS} movimientos por carga.`);
+      const name=file.originalname.slice(0,200);
+      const items=[];
+      for(const [index,text] of texts.entries())
+        items.push(await this.storeIngestion("EXCEL",`${name} · movimiento ${index+1}`,text,caseId,user));
+      return {count:items.length,items};
+    }
+    let text=""; let type="EMAIL";
+    if(lowerName.endsWith(".pdf")) {
       type="PDF";
       text=await this.extractPdfText(file.buffer);
     } else {
-      type="EMAIL";
       text=file.buffer.toString("utf8");
     }
     if(text.trim().length<10)throw new BadRequestException("No fue posible extraer texto legible del archivo.");
@@ -272,21 +380,93 @@ export class ProductService {
       throw new BadRequestException("No fue posible extraer texto del PDF. Verifica que no sea una imagen escaneada o un archivo protegido.");
     }
   }
+  /** Causa del abogado cuyo RIT o referencia coincide con la detectada; las archivadas no reciben movimientos. */
+  private async findCaseByReference(lawyerId:string,reference:string){
+    const value=normalizeReference(reference);
+    return (await this.db.query(
+      `SELECT id FROM cases WHERE lawyer_id=$1 AND status<>'Archivada'
+       AND (upper(reference)=$2 OR upper(rit)=$2) ORDER BY created_at DESC LIMIT 1`,
+      [lawyerId,value],
+    )).rows[0]?.id as string|undefined;
+  }
   private async storeIngestion(sourceType:string,sourceName:string,text:string,caseId:string|undefined,user:SessionUser,externalMessageId?:string){
-    const reference=text.match(/\b(?:RIT|ROL|CAUSA|LC)[\s:#-]*([A-Z0-9-]{3,30})/i)?.[1]||null;
-    const date=text.match(/\b(20\d{2})[-\/.](0?[1-9]|1[0-2])[-\/.](0?[1-9]|[12]\d|3[01])\b/)?.[0]?.replace(/[\/.]/g,"-")||null;
-    const court=text.match(/(?:tribunal|juzgado)[:\s]+([^\n.]{3,180})/i)?.[1]?.trim()||null;
-    const movement=/audiencia/i.test(text)?"AUDIENCIA":/resoluci[oó]n/i.test(text)?"RESOLUCIÓN":/notificaci[oó]n/i.test(text)?"NOTIFICACIÓN":"MOVIMIENTO";
-    const summary=await this.summarize(text,movement,reference,date,court);
-    return (await this.db.query(`INSERT INTO ingestion_items(lawyer_id,case_id,source_type,source_name,source_text,detected_reference,detected_date,detected_court,movement_type,suggested_summary,external_message_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,status,suggested_summary AS "suggestedSummary"`,[user.id,caseId||null,sourceType,sourceName,text,reference,date,court,movement,summary,externalMessageId||null])).rows[0];
+    // En un correo el asunto suele traer el RIT, por eso se analiza junto con el cuerpo.
+    const rules=extractMovement(sourceType==="EMAIL"?`${sourceName}\n${text}`:text);
+    const linkedCase=caseId??(rules.reference?await this.findCaseByReference(user.id,rules.reference):undefined);
+    const summary=await this.summarize(text,rules.movementType,rules.reference,rules.date,rules.time,rules.court);
+    return (await this.db.query(
+      `INSERT INTO ingestion_items(lawyer_id,case_id,source_type,source_name,source_text,detected_reference,detected_date,
+         detected_time,detected_court,movement_type,suggested_summary,suggestion_source,confidence,format_recognized,
+         missing_fields,external_message_id)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       RETURNING id,status,case_id AS "caseId",movement_type AS "movementType",suggested_summary AS "suggestedSummary",
+         suggestion_source AS "suggestionSource",confidence,format_recognized AS "formatRecognized",missing_fields AS "missingFields"`,
+      [user.id,linkedCase||null,sourceType,sourceName,text,rules.reference,rules.date,rules.time,rules.court,
+       rules.movementType,summary.text,summary.source,rules.confidence,rules.formatRecognized,rules.missingFields,
+       externalMessageId||null],
+    )).rows[0];
   }
-  private async summarize(text:string,movement:string,reference:string|null,date:string|null,court:string|null){
-    if(process.env.GEMINI_API_KEY){try{const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:`Resume para una persona no abogada, sin inventar datos y en máximo 120 palabras:\n${text.slice(0,12000)}`}]}]})});if(res.ok){const data:any=await res.json();const value=data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();if(value)return value.slice(0,2000);}}catch{}}
-    return [`Se detectó un movimiento de tipo ${movement.toLowerCase()}.`,reference?`Referencia ${reference}.`:"",date?`Fecha ${date}.`:"",court?`Tribunal: ${court}.`:"",text.replace(/\s+/g," ").slice(0,500)].filter(Boolean).join(" ").slice(0,2000);
+  private async summarize(text:string,movement:string,reference:string|null,date:string|null,time:string|null,court:string|null):Promise<{text:string;source:"IA"|"REGLAS"}>{
+    if(process.env.GEMINI_API_KEY){try{const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:`Resume para una persona no abogada, sin inventar datos y en máximo 120 palabras:\n${text.slice(0,12000)}`}]}]})});if(res.ok){const data:any=await res.json();const value=data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();if(value)return {text:value.slice(0,2000),source:"IA"};}}catch{}}
+    const readableDate=date?`${date.slice(8,10)}-${date.slice(5,7)}-${date.slice(0,4)}${time?` a las ${time}`:""}`:"";
+    return {source:"REGLAS",text:[`Se detectó un movimiento de tipo ${movement.toLowerCase()}.`,reference?`Referencia ${reference}.`:"",readableDate?`Fecha ${readableDate}.`:"",court?`Tribunal: ${court}.`:"",text.replace(/\s+/g," ").slice(0,500)].filter(Boolean).join(" ").slice(0,2000)};
   }
+  /** CU-02: el abogado asocia la causa, corrige los datos sugeridos y recién entonces se publica al cliente. */
   async reviewIngestion(id:string,dto:ReviewIngestionDto,user:SessionUser){
-    this.lawyer(user); const current=(await this.db.query("SELECT * FROM ingestion_items WHERE id=$1 AND lawyer_id=$2 AND status='PENDING'",[id,user.id])).rows[0];if(!current)throw new NotFoundException("Movimiento pendiente no encontrado.");
-    const summary=(dto.summary||current.suggested_summary).trim();
-    const client=await this.db.pool.connect();try{await client.query("BEGIN");await client.query(`UPDATE ingestion_items SET status=$1,corrected_summary=$2,reviewed_at=now() WHERE id=$3`,[dto.status,summary,id]);if(dto.status==="CONFIRMED"&&current.case_id){const c=(await client.query("SELECT client_id FROM cases WHERE id=$1",[current.case_id])).rows[0];await client.query(`INSERT INTO case_communications(case_id,author_id,message,channel,delivery_status) VALUES($1,$2,$3,'IN_APP','DELIVERED')`,[current.case_id,user.id,summary]);await client.query(`INSERT INTO notifications(user_id,case_id,notification_type,title,body,delivery_status,delivered_at) VALUES($1,$2,'CASE_UPDATE','Nuevo movimiento confirmado',$3,'DELIVERED',now())`,[c.client_id,current.case_id,summary]);}await client.query("COMMIT");return {id,status:dto.status,summary};}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+    this.lawyer(user);
+    if(dto.detectedDate&&!isRealDate(dto.detectedDate))throw new BadRequestException("Fecha no válida.");
+    const client=await this.db.pool.connect();
+    try{
+      await client.query("BEGIN");
+      const current=(await client.query(
+        `SELECT *,to_char(detected_date,'YYYY-MM-DD') AS date_text,to_char(detected_time,'HH24:MI') AS time_text
+         FROM ingestion_items WHERE id=$1 AND lawyer_id=$2 AND status='PENDING' FOR UPDATE`,
+        [id,user.id],
+      )).rows[0];
+      if(!current)throw new NotFoundException("Movimiento pendiente no encontrado.");
+      const caseId:string|null=dto.caseId??current.case_id??null;
+      const mustValidateCase=Boolean(caseId)&&(dto.status==="CONFIRMED"||Boolean(dto.caseId));
+      const legalCase=mustValidateCase?await this.caseAccess(caseId!,user,true):null;
+      if(dto.status==="CONFIRMED"&&!legalCase)
+        throw new BadRequestException("Asocia el movimiento a una causa antes de confirmarlo; sin causa no llegaría al cliente.");
+      const pick=(value:string|null|undefined,fallback:string|null)=>value===undefined?fallback:(value||null);
+      const original={movementType:current.movement_type as string,detectedDate:current.date_text as string|null,detectedTime:current.time_text as string|null,detectedCourt:current.detected_court as string|null,summary:current.suggested_summary as string};
+      const movementType=dto.movementType??original.movementType;
+      const date=pick(dto.detectedDate,original.detectedDate);
+      const time=pick(dto.detectedTime,original.detectedTime);
+      const court=pick(dto.court,original.detectedCourt);
+      const summary=(dto.summary||original.summary).trim();
+      const edited=movementType!==original.movementType||date!==original.detectedDate||time!==original.detectedTime
+        ||court!==original.detectedCourt||summary!==original.summary.trim();
+      await client.query(
+        `UPDATE ingestion_items SET status=$1,corrected_summary=$2,case_id=$3,movement_type=$4,detected_date=$5,detected_time=$6,
+           detected_court=$7,edited=$8,original_suggestion=CASE WHEN $8 THEN $9::jsonb ELSE NULL END,reviewed_at=now()
+         WHERE id=$10`,
+        [dto.status,summary,caseId,movementType,date,time,court,edited,JSON.stringify(original),id],
+      );
+      let deadlineId:string|null=null;
+      if(dto.status==="CONFIRMED"&&legalCase){
+        await client.query(`INSERT INTO case_communications(case_id,author_id,message,channel,delivery_status) VALUES($1,$2,$3,'IN_APP','DELIVERED')`,[legalCase.id,user.id,summary]);
+        await client.query(`INSERT INTO notifications(user_id,case_id,notification_type,title,body,delivery_status,delivered_at) VALUES($1,$2,'CASE_UPDATE','Nuevo movimiento confirmado',$3,'DELIVERED',now())`,[legalCase.client_id,legalCase.id,summary.slice(0,1000)]);
+        // CU-02, paso 5: una audiencia futura actualiza la causa (próxima fecha) y queda en la agenda con recordatorio.
+        if(movementType==="AUDIENCIA"&&date&&date>=chileToday()){
+          deadlineId=(await client.query(
+            `INSERT INTO case_deadlines(case_id,created_by,deadline_type,title,description,due_at,reminder_at,urgency)
+             VALUES($1,$2,'HEARING',$3,$4,($5::date+$6::time) AT TIME ZONE 'America/Santiago',
+               (($5::date+$6::time) AT TIME ZONE 'America/Santiago')-interval '1 day','Alta')
+             RETURNING id`,
+            [legalCase.id,user.id,`Audiencia${court?` · ${court}`:""}`.slice(0,200),
+             time?null:"Hora no informada en el movimiento; revisa la resolución.",date,time||"09:00"],
+          )).rows[0].id;
+          await client.query(
+            `UPDATE cases SET next_date=$1::date,next_date_label='Audiencia',version=version+1,updated_at=now()
+             WHERE id=$2 AND (next_date IS NULL OR next_date<$3::date OR next_date>$1::date)`,
+            [date,legalCase.id,chileToday()],
+          );
+        }
+      }
+      await client.query("COMMIT");
+      return {id,status:dto.status,summary,caseId,edited,deadlineId};
+    }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
   }
 }

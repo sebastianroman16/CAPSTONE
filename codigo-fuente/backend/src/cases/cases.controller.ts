@@ -61,4 +61,11 @@ export class CasesController {
   ) {
     return this.cases.archive(id, dto.version, req.user);
   }
+  @Patch(":id/reactivate") reactivate(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: ArchiveCaseDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.cases.reactivate(id, dto.version, req.user);
+  }
 }

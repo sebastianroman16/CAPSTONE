@@ -97,8 +97,27 @@
     }
   </div>
 </section>
+} @if (draftRestored()) {
+<div class="conflict-panel" role="status">
+  <p>
+    Recuperamos los cambios que no alcanzaste a guardar antes de que tu sesión
+    expirara. Revísalos antes de guardar.
+  </p>
+  <button type="button" class="button" (click)="discardRestoredDraft()">
+    Descartar borrador
+  </button>
+</div>
 } @if (loading()) {
 <p role="status">Cargando formulario…</p>
+} @else if (archived()) {
+<section class="card" role="status">
+  <h2>Esta causa está archivada</h2>
+  <p>
+    Una causa archivada es de solo lectura. Para editarla, primero reactívala
+    desde su detalle.
+  </p>
+  <a class="button primary" [routerLink]="['/causas', id]">Ir al detalle de la causa</a>
+</section>
 } @else if (!loadError()) {
 <form [formGroup]="form" (ngSubmit)="submit()" class="case-form">
   <section class="card">

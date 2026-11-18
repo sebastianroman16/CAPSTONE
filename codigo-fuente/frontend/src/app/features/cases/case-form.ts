@@ -52,6 +52,11 @@ export class CaseForm implements OnDestroy {
   readonly onboarding = signal<CaseOnboarding | null>(null);
   readonly createdCaseId = signal("");
   readonly discardConfirm = signal(false);
+  /** E15: hay un borrador recuperado tras una expiración por inactividad. */
+  readonly draftRestored = signal(false);
+  /** E12: una causa archivada es de solo lectura; se reactiva desde su detalle. */
+  readonly archived = signal(false);
+  private loadedItem: LegalCase | null = null;
   readonly form = inject(FormBuilder).nonNullable.group({
     title: [
       "",
@@ -83,6 +88,29 @@ export class CaseForm implements OnDestroy {
     return this.form.dirty;
   }
   discardPendingChanges() {
+    this.form.markAsPristine();
+  }
+  draftKey() {
+    return `causa:${this.id ?? "nueva"}`;
+  }
+  draftValue() {
+    return { clientMode: this.clientMode(), values: this.form.getRawValue() };
+  }
+  private restoreDraft() {
+    const draft = this.unsaved.takeDraft<{ clientMode: "existing" | "new"; values: Partial<ReturnType<CaseForm["form"]["getRawValue"]>> }>(this.draftKey());
+    if (!draft) return;
+    if (!this.id && draft.clientMode === "new") this.setClientMode("new");
+    this.form.patchValue(draft.values);
+    this.form.markAsDirty();
+    this.draftRestored.set(true);
+  }
+  discardRestoredDraft() {
+    this.draftRestored.set(false);
+    if (this.loadedItem) this.apply(this.loadedItem);
+    else {
+      this.setClientMode("existing");
+      this.form.reset();
+    }
     this.form.markAsPristine();
   }
   @HostListener("window:beforeunload", ["$event"])
@@ -133,6 +161,8 @@ export class CaseForm implements OnDestroy {
     this.form.markAsDirty();
   }
   private apply(item: LegalCase) {
+    this.loadedItem = item;
+    this.archived.set(item.status === "Archivada");
     this.reference.set(item.reference);
     this.version.set(item.version);
     this.form.reset(this.values(item));
@@ -148,11 +178,15 @@ export class CaseForm implements OnDestroy {
           this.api.get(this.id).subscribe({
             next: (item) => {
               this.apply(item);
+              this.restoreDraft();
               this.loading.set(false);
             },
             error: (e) => this.failed(e),
           });
-        else this.loading.set(false);
+        else {
+          this.restoreDraft();
+          this.loading.set(false);
+        }
       },
       error: (e) => this.failed(e),
     });

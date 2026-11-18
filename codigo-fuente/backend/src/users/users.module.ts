@@ -13,8 +13,7 @@ import { DatabaseService } from "../database/database.service";
 import { AuthModule } from "../auth/auth.module";
 import { AllowTemporaryPassword, AuthGuard, AuthRequest } from "../auth/auth.guard";
 import { ConflictException } from "@nestjs/common";
-import { randomBytes } from "node:crypto";
-import { hashPassword } from "../auth/password";
+import { createTemporaryPassword, hashPassword } from "../auth/password";
 import { CreateClientDto, ProfileDto } from "../product/product.dto";
 @Controller("users")
 @UseGuards(AuthGuard)
@@ -35,7 +34,7 @@ class UsersController {
     if(req.user.role!=="LAWYER") throw new ForbiddenException();
     const existing=(await this.db.query("SELECT id FROM users WHERE email=$1",[dto.email.toLowerCase()])).rows[0];
     if(existing) throw new ConflictException("Ya existe una cuenta con ese correo.");
-    const temporaryPassword=`Lex-${randomBytes(9).toString("base64url")}!`;
+    const temporaryPassword=createTemporaryPassword(9);
     const client=await this.db.pool.connect();
     try{await client.query("BEGIN");const row=(await client.query(`INSERT INTO users(name,email,phone,password_hash,role,lawyer_id,must_change_password) VALUES($1,$2,$3,$4,'CLIENT',$5,true) RETURNING id,name,email,phone`,[dto.name,dto.email.toLowerCase(),dto.phone||null,await hashPassword(temporaryPassword),req.user.id])).rows[0];await client.query("COMMIT");return {...row,temporaryPassword};}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
   }

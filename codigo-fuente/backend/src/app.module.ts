@@ -5,7 +5,8 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
+import { UserThrottlerGuard } from "./auth/user-throttler.guard";
 import { DatabaseModule } from "./database/database.module";
 import { DatabaseService } from "./database/database.service";
 import { AuthModule } from "./auth/auth.module";
@@ -53,6 +54,7 @@ class HealthController {
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  // E26: límites por usuario autenticado (por IP solo sin sesión y en las rutas públicas de acceso).
+  providers: [{ provide: APP_GUARD, useClass: UserThrottlerGuard }],
 })
 export class AppModule {}

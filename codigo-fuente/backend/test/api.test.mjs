@@ -62,6 +62,16 @@ async function request(path, method = "GET", body, cookie, origin) {
     headers: response.headers,
   };
 }
+// Crea una sesión como lo hace el servidor (hash SHA-256 del token), sin pasar por /auth/login:
+// evita el límite de 10 inicios de sesión por minuto en una suite que inicia muchas sesiones.
+async function sessionFor(userId) {
+  const token = randomBytes(32).toString("hex"); // mismo formato que exige authenticate()
+  await db.query(
+    "INSERT INTO sessions (token_hash,user_id,expires_at,last_seen_at) VALUES ($1,$2,now()+interval '8 hours',now())",
+    [createHash("sha256").update(token).digest("hex"), userId],
+  );
+  return `lex_session=${token}`;
+}
 async function uploadRequest(path, buffer, cookie, filename = "causas.xlsx") {
   const body = new FormData();
   body.append(
@@ -101,6 +111,7 @@ describe("API real con PostgreSQL y esquema aislado", () => {
         PORT: String(port),
         FRONTEND_ORIGIN: "http://localhost:4200",
         INGESTION_WEBHOOK_SECRET: "integration-webhook-secret",
+        REMINDER_INTERVAL_MS: "200",
       };
       execFileSync(process.execPath, ["scripts/migrate.mjs"], { env });
       execFileSync(process.execPath, ["scripts/migrate.mjs"], { env });
@@ -223,8 +234,18 @@ describe("API real con PostgreSQL y esquema aislado", () => {
       [tokenHash],
     );
     assert.equal(activity.rows[0].fresh, true);
+    // E14 (borde): 4 minutos sin señal siguen dentro de la ventana de 4 min 15 s.
     await db.query(
       "UPDATE sessions SET last_seen_at=now()-interval '4 minutes' WHERE token_hash=$1",
+      [tokenHash],
+    );
+    assert.equal(
+      (await request("/auth/me", "GET", undefined, cookie)).status,
+      200,
+      "la ventana del servidor cubre el minuto entre señales de actividad más el aviso",
+    );
+    await db.query(
+      "UPDATE sessions SET last_seen_at=now()-interval '4 minutes 20 seconds' WHERE token_hash=$1",
       [tokenHash],
     );
     assert.equal(
@@ -707,11 +728,14 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.equal(final.version, 3);
   });
   it("permite volver a guardar tras consultar la versión actual", async () => {
+    // Usa una causa activa propia: `created` ya está archivada y desde E12 es de solo lectura.
+    const own = (await request("/cases", "POST", { ...payload, title: "Causa para guardar de nuevo" }, lawyerCookie)).json;
+    await request(`/cases/${own.id}`, "PUT", { ...payload, title: "Primera edición", version: own.version }, lawyerCookie);
     const current = (
-      await request(`/cases/${created}`, "GET", undefined, lawyerCookie)
+      await request(`/cases/${own.id}`, "GET", undefined, lawyerCookie)
     ).json;
     const result = await request(
-      `/cases/${created}`,
+      `/cases/${own.id}`,
       "PUT",
       { ...payload, version: current.version },
       lawyerCookie,
@@ -1156,6 +1180,600 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.match(answer.json.content,/No puedo mostrar notas internas/i);
     assert.doesNotMatch(answer.json.content,/SECRETO INTERNO|OTRO SECRETO/i);
   });
+  // ───────────── Fase 1 sin proveedores externos: P1, P7, P2 y P3 (caso feliz, triste y borde) ─────────────
+  describe("P1 · Bandeja de movimientos (CU-02, HU-19, HU-20)", () => {
+    const seedCase = "33333333-3333-4333-8333-333333333333";
+    const ingest = (text, extra = {}) =>
+      request("/ingestion/text", "POST", { sourceType: "TEXT", sourceName: "Aviso de prueba", text, ...extra }, lawyerCookie);
+    const review = (id, body, cookie = lawyerCookie) => request(`/ingestion/${id}/review`, "PATCH", body, cookie);
+    const communicationsOf = async (caseId) =>
+      Number((await db.query("SELECT count(*) FROM case_communications WHERE case_id=$1", [caseId])).rows[0].count);
+    let archivedCase, ritCase, emptyDateCase, foreignCase;
+    before(async () => {
+      const createCase = async (body, cookie = lawyerCookie) => {
+        const result = await request("/cases", "POST", { ...payload, ...body }, cookie);
+        assert.equal(result.status, 201, `${body.title}: ${JSON.stringify(result.json)}`);
+        return result.json;
+      };
+      const toArchive = await createCase({ title: "Causa archivada para bandeja" });
+      assert.equal((await request(`/cases/${toArchive.id}/archive`, "PATCH", { version: toArchive.version }, lawyerCookie)).status, 200);
+      archivedCase = toArchive;
+      ritCase = await createCase({ rit: "C-777-2026", title: "Causa con RIT para bandeja" });
+      emptyDateCase = await createCase({ nextDate: undefined, title: "Causa sin próxima fecha" });
+      foreignCase = await createCase({ clientId: otherClientId, title: "Causa del otro abogado" }, otherCookie);
+    });
+
+    describe("caso feliz", () => {
+      it("asocia la causa por referencia, permite corregir la sugerencia y agenda la audiencia confirmada", async () => {
+        const ingested = await ingest(
+          "Santiago, 18 de noviembre de 2026. En causa LC-0001, el 3° Juzgado de Familia de Santiago cita a las partes a audiencia preparatoria para el 25/12/2026 a las 10:30 horas.",
+        );
+        assert.equal(ingested.status, 201, JSON.stringify(ingested.json));
+        assert.equal(ingested.json.caseId, seedCase);
+        assert.equal(ingested.json.movementType, "AUDIENCIA");
+        assert.equal(ingested.json.confidence, "ALTA");
+        assert.equal(ingested.json.suggestionSource, "REGLAS");
+        assert.equal(ingested.json.formatRecognized, true);
+        const listed = (await request("/ingestion", "GET", undefined, lawyerCookie)).json.find((item) => item.id === ingested.json.id);
+        assert.equal(listed.detectedDate, "2026-12-25");
+        assert.equal(listed.detectedTime, "10:30");
+        assert.equal(listed.detectedCourt, "3° Juzgado de Familia de Santiago");
+        assert.equal(listed.caseReference, "LC-1");
+
+        const reviewed = await review(ingested.json.id, {
+          status: "CONFIRMED", detectedTime: "11:00", court: "2° Juzgado de Familia de Santiago",
+          summary: "El tribunal citó a audiencia preparatoria para el 25 de diciembre a las 11:00.",
+        });
+        assert.equal(reviewed.status, 200, JSON.stringify(reviewed.json));
+        assert.equal(reviewed.json.edited, true);
+        assert.ok(reviewed.json.deadlineId);
+        const stored = (await db.query("SELECT status,edited,original_suggestion,detected_court,to_char(detected_time,'HH24:MI') AS t FROM ingestion_items WHERE id=$1", [ingested.json.id])).rows[0];
+        assert.equal(stored.status, "CONFIRMED");
+        assert.equal(stored.detected_court, "2° Juzgado de Familia de Santiago");
+        assert.equal(stored.t, "11:00");
+        assert.equal(stored.original_suggestion.detectedCourt, "3° Juzgado de Familia de Santiago");
+        assert.equal(stored.original_suggestion.detectedTime, "10:30");
+        const deadline = (await db.query("SELECT deadline_type,urgency,due_at,reminder_at FROM case_deadlines WHERE id=$1", [reviewed.json.deadlineId])).rows[0];
+        assert.equal(deadline.deadline_type, "HEARING");
+        assert.equal(deadline.urgency, "Alta");
+        assert.equal(deadline.due_at.toISOString(), "2026-12-25T14:00:00.000Z", "11:00 en Chile (verano, UTC-3)");
+        assert.equal(deadline.reminder_at.toISOString(), "2026-12-24T14:00:00.000Z");
+        const communications = await request(`/cases/${seedCase}/communications`, "GET", undefined, clientCookie);
+        assert.ok(communications.json.some((item) => item.message.includes("25 de diciembre a las 11:00")));
+        const notifications = await request("/notifications", "GET", undefined, clientCookie);
+        assert.ok(notifications.json.some((item) => item.title === "Nuevo movimiento confirmado" && item.body.includes("25 de diciembre")));
+      });
+      it("confirma sin cambios sin marcarlo como editado", async () => {
+        const ingested = await ingest("RIT C-777-2026. Resolución: téngase presente el escrito, con fecha 2026-11-10.");
+        assert.equal(ingested.json.caseId, ritCase.id);
+        const reviewed = await review(ingested.json.id, { status: "CONFIRMED" });
+        assert.equal(reviewed.status, 200);
+        assert.equal(reviewed.json.edited, false);
+        assert.equal(reviewed.json.deadlineId, null, "una resolución no crea audiencia");
+        assert.equal((await db.query("SELECT original_suggestion FROM ingestion_items WHERE id=$1", [ingested.json.id])).rows[0].original_suggestion, null);
+      });
+      it("asocia un correo por el RIT del asunto aunque el cuerpo no lo mencione", async () => {
+        const mail = await fetch(`${base}/webhooks/ingestion/email`, {
+          method: "POST", headers: { "content-type": "application/json", "x-ingestion-secret": "integration-webhook-secret" },
+          body: JSON.stringify({ messageId: `mail-${randomBytes(4).toString("hex")}`, lawyerEmail: "abogado@example.test", subject: "Notificación RIT C-777-2026", text: "Se dictó una resolución en su causa. Revise el portal." }),
+        });
+        assert.equal(mail.status, 201);
+        assert.equal((await mail.json()).caseId, ritCase.id);
+      });
+      it("una planilla genera un movimiento por fila, con fechas sin desfase y causa detectada", async () => {
+        const buffer = await workbookBuffer(
+          ["Referencia", "Tribunal", "Fecha", "Trámite"],
+          [
+            ["LC-1", "1° Juzgado de Familia de Santiago", new Date(Date.UTC(2026, 8, 25)), "Se fija audiencia de juicio"],
+            ["LC-1", "1° Juzgado de Familia de Santiago", new Date(Date.UTC(2026, 9, 2)), "Resolución que tiene presente escrito"],
+          ],
+        );
+        const uploaded = await uploadRequest("/ingestion/file", buffer, lawyerCookie, "movimientos.xlsx");
+        assert.equal(uploaded.status, 201, JSON.stringify(uploaded.json));
+        assert.equal(uploaded.json.count, 2);
+        const items = (await request("/ingestion", "GET", undefined, lawyerCookie)).json.filter((item) => uploaded.json.items.some((row) => row.id === item.id));
+        assert.deepEqual(items.map((item) => item.detectedDate).sort(), ["2026-09-25", "2026-10-02"]);
+        assert.ok(items.every((item) => item.detectedCourt === "1° Juzgado de Familia de Santiago"));
+        assert.ok(items.every((item) => item.caseId === seedCase));
+        assert.deepEqual(items.map((item) => item.movementType).sort(), ["AUDIENCIA", "RESOLUCIÓN"]);
+      });
+    });
+
+    describe("caso triste", () => {
+      it("no confirma un movimiento sin causa y no publica nada", async () => {
+        const ingested = await ingest("Estimado usuario, adjuntamos información de su interés para revisar.");
+        assert.equal(ingested.json.caseId, null);
+        const before = await communicationsOf(seedCase);
+        const blocked = await review(ingested.json.id, { status: "CONFIRMED" });
+        assert.equal(blocked.status, 400);
+        assert.match(blocked.json.message, /Asocia el movimiento a una causa/);
+        assert.equal((await db.query("SELECT status FROM ingestion_items WHERE id=$1", [ingested.json.id])).rows[0].status, "PENDING");
+        assert.equal(await communicationsOf(seedCase), before);
+        const confirmed = await review(ingested.json.id, { status: "CONFIRMED", caseId: seedCase });
+        assert.equal(confirmed.status, 200, "al asociarla manualmente sí se publica");
+        assert.equal(await communicationsOf(seedCase), before + 1);
+      });
+      it("rechaza causas ajenas, inexistentes o archivadas", async () => {
+        const ingested = await ingest("Mensaje judicial sin referencia reconocible para la prueba.");
+        assert.equal((await review(ingested.json.id, { status: "CONFIRMED", caseId: foreignCase.id })).status, 404);
+        assert.equal((await review(ingested.json.id, { status: "CONFIRMED", caseId: randomUUID() })).status, 404);
+        const archived = await review(ingested.json.id, { status: "CONFIRMED", caseId: archivedCase.id });
+        assert.equal(archived.status, 400);
+        assert.match(archived.json.message, /solo lectura/);
+        assert.equal((await db.query("SELECT status,case_id FROM ingestion_items WHERE id=$1", [ingested.json.id])).rows[0].case_id, null);
+      });
+      it("valida los datos corregidos", async () => {
+        const ingested = await ingest("RIT C-777-2026. Resolución del 2026-11-11.");
+        for (const body of [
+          { status: "CONFIRMED", detectedDate: "2026-02-30" },
+          { status: "CONFIRMED", detectedDate: "25/12/2026" },
+          { status: "CONFIRMED", detectedTime: "24:00" },
+          { status: "CONFIRMED", detectedTime: "9:30" },
+          { status: "CONFIRMED", movementType: "OTRO" },
+          { status: "CONFIRMED", summary: "corto" },
+          { status: "CONFIRMED", court: "x".repeat(201) },
+          { status: "CONFIRMED", caseId: "no-es-uuid" },
+          { status: "PUBLICADO" },
+        ]) {
+          assert.equal((await review(ingested.json.id, body)).status, 400, JSON.stringify(body));
+        }
+        assert.equal((await db.query("SELECT status FROM ingestion_items WHERE id=$1", [ingested.json.id])).rows[0].status, "PENDING");
+      });
+      it("solo el abogado dueño puede revisar, y una sola vez", async () => {
+        const ingested = await ingest("RIT C-777-2026. Resolución del 2026-11-12.");
+        assert.equal((await review(ingested.json.id, { status: "CONFIRMED" }, clientCookie)).status, 403);
+        assert.equal((await review(ingested.json.id, { status: "CONFIRMED" }, supervisorCookie)).status, 403);
+        assert.equal((await review(ingested.json.id, { status: "CONFIRMED" }, otherCookie)).status, 404);
+        assert.equal((await review(ingested.json.id, { status: "REJECTED" })).status, 200);
+        assert.equal((await review(ingested.json.id, { status: "CONFIRMED" })).status, 404, "ya fue revisado");
+        assert.equal((await review(randomUUID(), { status: "REJECTED" })).status, 404);
+      });
+      it("rechaza planillas vacías o demasiado grandes sin guardar movimientos", async () => {
+        const count = async () => Number((await db.query("SELECT count(*) FROM ingestion_items WHERE lawyer_id=$1", [lawyerId])).rows[0].count);
+        const before = await count();
+        const empty = await uploadRequest("/ingestion/file", await workbookBuffer([], []), lawyerCookie, "vacia.xlsx");
+        assert.equal(empty.status, 400);
+        const rows = Array.from({ length: 201 }, (_, index) => ["LC-1", "Juzgado de Familia de Santiago", "2026-09-25", `Trámite número ${index}`]);
+        const tooMany = await uploadRequest("/ingestion/file", await workbookBuffer(["Referencia", "Tribunal", "Fecha", "Trámite"], rows), lawyerCookie, "grande.xlsx");
+        assert.equal(tooMany.status, 400);
+        assert.match(tooMany.json.message, /máximo de 200/);
+        assert.equal(await count(), before);
+      });
+    });
+
+    describe("caso borde", () => {
+      it("una audiencia pasada se publica pero no se agenda", async () => {
+        const ingested = await ingest("RIT C-777-2026. El Juzgado de Familia de Santiago cita a audiencia preparatoria para el 10/01/2020.");
+        const reviewed = await review(ingested.json.id, { status: "CONFIRMED" });
+        assert.equal(reviewed.status, 200);
+        assert.equal(reviewed.json.deadlineId, null);
+      });
+      it("una audiencia sin hora se agenda a las 09:00 con aviso de hora por confirmar y actualiza la próxima fecha vacía", async () => {
+        const before = (await db.query("SELECT version,next_date FROM cases WHERE id=$1", [emptyDateCase.id])).rows[0];
+        assert.equal(before.next_date, null);
+        const ingested = await ingest("El Juzgado de Familia de Santiago cita a audiencia de juicio para el 28 de diciembre de 2026.", { caseId: emptyDateCase.id });
+        const reviewed = await review(ingested.json.id, { status: "CONFIRMED" });
+        assert.equal(reviewed.status, 200, JSON.stringify(reviewed.json));
+        const deadline = (await db.query("SELECT due_at,description FROM case_deadlines WHERE id=$1", [reviewed.json.deadlineId])).rows[0];
+        assert.equal(deadline.due_at.toISOString(), "2026-12-28T12:00:00.000Z");
+        assert.match(deadline.description, /Hora no informada/);
+        const after = (await db.query("SELECT version,to_char(next_date,'YYYY-MM-DD') AS d,next_date_label FROM cases WHERE id=$1", [emptyDateCase.id])).rows[0];
+        assert.equal(after.d, "2026-12-28");
+        assert.equal(after.next_date_label, "Audiencia");
+        assert.equal(after.version, before.version + 1, "el cambio invalida formularios abiertos con la versión anterior");
+      });
+      it("no reemplaza una próxima fecha futura más cercana", async () => {
+        const before = (await db.query("SELECT version,to_char(next_date,'YYYY-MM-DD') AS d FROM cases WHERE id=$1", [emptyDateCase.id])).rows[0];
+        const ingested = await ingest("Se fija audiencia de conciliación para el 30/12/2026.", { caseId: emptyDateCase.id });
+        assert.equal((await review(ingested.json.id, { status: "CONFIRMED" })).status, 200);
+        const after = (await db.query("SELECT version,to_char(next_date,'YYYY-MM-DD') AS d FROM cases WHERE id=$1", [emptyDateCase.id])).rows[0];
+        assert.equal(after.d, before.d);
+        assert.equal(after.version, before.version);
+      });
+      it("dejar un campo vacío lo borra y cuenta como edición", async () => {
+        const ingested = await ingest("RIT C-777-2026. El 3° Juzgado de Familia de Santiago dicta resolución con fecha 2026-11-13.");
+        const reviewed = await review(ingested.json.id, { status: "CONFIRMED", court: "", detectedDate: null });
+        assert.equal(reviewed.status, 200);
+        assert.equal(reviewed.json.edited, true);
+        const stored = (await db.query("SELECT detected_court,detected_date FROM ingestion_items WHERE id=$1", [ingested.json.id])).rows[0];
+        assert.equal(stored.detected_court, null);
+        assert.equal(stored.detected_date, null);
+      });
+      it("rechazar no publica nada aunque la causa esté asociada", async () => {
+        const before = await communicationsOf(ritCase.id);
+        const ingested = await ingest("RIT C-777-2026. Resolución del 2026-11-14.");
+        assert.equal((await review(ingested.json.id, { status: "REJECTED", summary: "No corresponde publicar este movimiento." })).status, 200);
+        assert.equal(await communicationsOf(ritCase.id), before);
+      });
+      it("no asocia automáticamente movimientos a causas archivadas", async () => {
+        const ingested = await ingest(`Resolución en causa ${archivedCase.reference} del 2026-11-15.`);
+        assert.equal(ingested.json.caseId, null);
+      });
+      it("con una causa elegida al cargar, todas las filas del Excel quedan en esa causa", async () => {
+        const buffer = await workbookBuffer(["Trámite", "Fecha"], [["Resolución sin referencia", "2026-11-01"], ["Otra resolución", "2026-11-02"]]);
+        const body = new FormData();
+        body.append("file", new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "sin-referencia.xlsx");
+        body.append("caseId", ritCase.id);
+        const response = await fetch(`${base}/ingestion/file`, { method: "POST", headers: { cookie: lawyerCookie }, body });
+        assert.equal(response.status, 201);
+        const json = await response.json();
+        assert.equal(json.count, 2);
+        assert.ok(json.items.every((item) => item.caseId === ritCase.id));
+      });
+    });
+  });
+
+  describe("P7 · Validación por patrón del formato judicial", () => {
+    const ingest = (text) => request("/ingestion/text", "POST", { sourceType: "TEXT", sourceName: "Aviso", text }, lawyerCookie);
+    it("caso feliz: un aviso con RIT, fecha y tribunal se reconoce", async () => {
+      const result = await ingest("RIT C-777-2026. El Juzgado Civil de Santiago dicta resolución con fecha 2026-11-16.");
+      assert.equal(result.json.formatRecognized, true);
+      assert.deepEqual(result.json.missingFields, []);
+    });
+    it("caso triste: un texto sin datos judiciales se marca como no reconocido y avisa los datos faltantes", async () => {
+      const result = await ingest("Estimado usuario, adjuntamos información de su interés para revisar.");
+      assert.equal(result.json.formatRecognized, false);
+      assert.equal(result.json.confidence, "BAJA");
+      assert.deepEqual(result.json.missingFields, ["referencia", "fecha", "tribunal"]);
+      const listed = (await request("/ingestion", "GET", undefined, lawyerCookie)).json.find((item) => item.id === result.json.id);
+      assert.equal(listed.formatRecognized, false);
+    });
+    it("caso borde: solo el RIT no basta; RIT y fecha sí", async () => {
+      const onlyRit = await ingest("Aviso de la causa RIT C-777-2026 sin más detalles.");
+      assert.equal(onlyRit.json.formatRecognized, false);
+      assert.deepEqual(onlyRit.json.missingFields, ["fecha", "tribunal"]);
+      const ritAndDate = await ingest("Aviso de la causa RIT C-777-2026 del 16/11/2026.");
+      assert.equal(ritAndDate.json.formatRecognized, true);
+      assert.deepEqual(ritAndDate.json.missingFields, ["tribunal"]);
+    });
+  });
+
+  describe("P2 · Avisos de documentos (HU-17 y CU-04 paso 6)", () => {
+    const seedCase = "33333333-3333-4333-8333-333333333333";
+    let quietCase;
+    const upload = async (cookie, fields, caseId = seedCase, file = { content: "contenido de prueba", type: "text/plain", name: "archivo.txt" }) => {
+      const form = new FormData();
+      form.append("file", new Blob([file.content], { type: file.type }), file.name);
+      for (const [key, value] of Object.entries(fields)) form.append(key, value);
+      return fetch(`${base}/cases/${caseId}/documents`, { method: "POST", headers: { cookie }, body: form });
+    };
+    const count = async (userId, title, caseId = seedCase) => Number((await db.query(
+      "SELECT count(*) FROM notifications WHERE user_id=$1 AND case_id=$2 AND title=$3", [userId, caseId, title],
+    )).rows[0].count);
+    before(async () => {
+      quietCase = (await request("/cases", "POST", { ...payload, title: "Causa sin solicitudes pendientes" }, lawyerCookie)).json;
+    });
+
+    describe("caso feliz", () => {
+      it("el cliente recibe aviso de un documento visible", async () => {
+        const before = await count(clientId, "Nuevo documento disponible");
+        assert.equal((await upload(lawyerCookie, { title: "Resolución para el cliente", category: "COURT_RESOLUTION", visibility: "CLIENT" })).status, 201);
+        assert.equal(await count(clientId, "Nuevo documento disponible"), before + 1);
+        const notifications = await request("/notifications", "GET", undefined, clientCookie);
+        assert.ok(notifications.json.some((item) => item.body === "LC-1: Resolución para el cliente"));
+      });
+      it("el abogado recibe aviso cuando el cliente responde una solicitud", async () => {
+        const requested = await request(`/cases/${seedCase}/document-requests`, "POST", { assignedTo: clientId, title: "Liquidación de sueldo" }, lawyerCookie);
+        assert.equal(requested.status, 201);
+        const before = await count(lawyerId, "El cliente respondió una solicitud de documento");
+        assert.equal((await upload(clientCookie, { title: "Liquidación enviada", category: "EVIDENCE", visibility: "CLIENT", requestId: requested.json.id })).status, 201);
+        assert.equal(await count(lawyerId, "El cliente respondió una solicitud de documento"), before + 1);
+        const notifications = await request("/notifications", "GET", undefined, lawyerCookie);
+        assert.ok(notifications.json.some((item) => item.type === "DOCUMENT_REQUEST" && item.body.includes("Liquidación enviada")));
+      });
+    });
+
+    describe("caso triste", () => {
+      it("un documento interno no avisa al cliente", async () => {
+        const before = await count(clientId, "Nuevo documento disponible");
+        assert.equal((await upload(lawyerCookie, { title: "Borrador interno", category: "OTHER", visibility: "INTERNAL" })).status, 201);
+        assert.equal(await count(clientId, "Nuevo documento disponible"), before);
+      });
+      it("una carga rechazada no deja avisos (la notificación va en la misma transacción)", async () => {
+        // Se excluyen los recordatorios: la tarea periódica puede crearlos en paralelo.
+        const total = async () => Number((await db.query("SELECT count(*) FROM notifications WHERE notification_type<>'DEADLINE'")).rows[0].count);
+        const before = await total();
+        assert.equal((await upload(lawyerCookie, { title: "Ejecutable", category: "OTHER", visibility: "CLIENT" }, seedCase, { content: "MZ", type: "application/x-msdownload", name: "virus.exe" })).status, 400);
+        assert.equal((await upload(clientCookie, { title: "Intento interno", category: "OTHER", visibility: "INTERNAL" }, quietCase.id)).status, 403);
+        assert.equal((await upload(supervisorCookie, { title: "Coordinador", category: "OTHER", visibility: "CLIENT" })).status, 403);
+        assert.equal(await total(), before, "las cargas rechazadas no generan avisos");
+        const requested = await request(`/cases/${seedCase}/document-requests`, "POST", { assignedTo: clientId, title: "Certificado de nacimiento" }, lawyerCookie);
+        const afterRequest = await total();
+        assert.equal((await upload(clientCookie, { title: "Primera respuesta", category: "IDENTITY", visibility: "CLIENT", requestId: requested.json.id })).status, 201);
+        const afterFirst = await total();
+        assert.equal(afterFirst, afterRequest + 1, "la primera respuesta avisa una vez");
+        assert.equal((await upload(clientCookie, { title: "Respuesta repetida", category: "IDENTITY", visibility: "CLIENT", requestId: requested.json.id })).status, 400);
+        assert.equal(await total(), afterFirst, "la respuesta duplicada no genera aviso");
+      });
+    });
+
+    describe("caso borde", () => {
+      it("un documento del cliente sin solicitud también avisa al abogado, con otro título", async () => {
+        const before = await count(lawyerId, "El cliente subió un documento", quietCase.id);
+        assert.equal((await upload(clientCookie, { title: "Antecedente adicional", category: "EVIDENCE", visibility: "CLIENT" }, quietCase.id)).status, 201);
+        assert.equal(await count(lawyerId, "El cliente subió un documento", quietCase.id), before + 1);
+        const type = (await db.query("SELECT notification_type FROM notifications WHERE user_id=$1 AND case_id=$2 AND title='El cliente subió un documento'", [lawyerId, quietCase.id])).rows[0].notification_type;
+        assert.equal(type, "CASE_UPDATE");
+      });
+      it("el aviso llega solo al cliente de esa causa", async () => {
+        const before = Number((await db.query("SELECT count(*) FROM notifications WHERE user_id=$1", [otherClientId])).rows[0].count);
+        assert.equal((await upload(lawyerCookie, { title: "Documento solo para su cliente", category: "OTHER", visibility: "CLIENT" }, quietCase.id)).status, 201);
+        assert.equal(Number((await db.query("SELECT count(*) FROM notifications WHERE user_id=$1", [otherClientId])).rows[0].count), before);
+      });
+    });
+  });
+
+  describe("P3 · Recordatorios reales y agenda (HU-12)", () => {
+    const seedCase = "33333333-3333-4333-8333-333333333333";
+    const deadline = (body, caseId = seedCase, cookie = lawyerCookie) => request(`/cases/${caseId}/deadlines`, "POST", { deadlineType: "OTHER", ...body }, cookie);
+    const reminders = async (title) => Number((await db.query(
+      "SELECT count(*) FROM notifications WHERE user_id=$1 AND notification_type='DEADLINE' AND title=$2", [lawyerId, `Recordatorio: ${title}`],
+    )).rows[0].count);
+    const waitFor = async (check) => { for (let attempt = 0; attempt < 40 && !(await check()); attempt++) await delay(100); };
+    const unique = (text) => `${text} ${randomBytes(3).toString("hex")}`;
+
+    describe("caso feliz", () => {
+      it("envía el recordatorio una sola vez con la urgencia elegida", async () => {
+        const title = unique("Presentar escrito");
+        const created = await deadline({ deadlineType: "FILING", title, urgency: "Baja", dueAt: new Date(Date.now() + 2 * 86400000).toISOString(), reminderAt: new Date(Date.now() - 60000).toISOString() });
+        assert.equal(created.status, 201, JSON.stringify(created.json));
+        assert.equal(created.json.urgency, "Baja");
+        await waitFor(async () => (await reminders(title)) > 0);
+        assert.equal(await reminders(title), 1);
+        await delay(600);
+        assert.equal(await reminders(title), 1, "no se repite");
+        const body = (await db.query("SELECT body FROM notifications WHERE user_id=$1 AND title=$2", [lawyerId, `Recordatorio: ${title}`])).rows[0].body;
+        assert.match(body, /^LC-1 · vence el \d{2}-\d{2}-\d{4} \d{2}:\d{2} · urgencia baja$/);
+        assert.ok((await db.query("SELECT reminder_sent_at FROM case_deadlines WHERE id=$1", [created.json.id])).rows[0].reminder_sent_at);
+      });
+      it("la agenda devuelve la urgencia y usa Media por defecto", async () => {
+        const created = await deadline({ title: unique("Sin urgencia"), dueAt: "2026-12-29T15:00:00.000Z" });
+        assert.equal(created.json.urgency, "Media");
+        const agenda = await request("/agenda?from=2026-12-29&to=2026-12-29", "GET", undefined, lawyerCookie);
+        assert.equal(agenda.json.find((item) => item.id === created.json.id).urgency, "Media");
+      });
+    });
+
+    describe("caso triste", () => {
+      it("no avisa plazos realizados o cancelados", async () => {
+        const done = unique("Plazo realizado");
+        const cancelled = unique("Plazo cancelado");
+        const soon = () => new Date(Date.now() + 1200).toISOString();
+        const a = await deadline({ title: done, dueAt: new Date(Date.now() + 86400000).toISOString(), reminderAt: soon() });
+        const b = await deadline({ title: cancelled, dueAt: new Date(Date.now() + 86400000).toISOString(), reminderAt: soon() });
+        assert.equal((await request(`/deadlines/${a.json.id}`, "PATCH", { status: "COMPLETED" }, lawyerCookie)).status, 200);
+        assert.equal((await request(`/deadlines/${b.json.id}`, "PATCH", { status: "CANCELLED" }, lawyerCookie)).status, 200);
+        await delay(2000);
+        assert.equal(await reminders(done), 0);
+        assert.equal(await reminders(cancelled), 0);
+      });
+      it("valida urgencia, orden de fechas y rol", async () => {
+        assert.equal((await deadline({ title: "Urgencia inválida", dueAt: "2026-12-30T12:00:00.000Z", urgency: "Urgente" })).status, 400);
+        assert.equal((await deadline({ title: "Recordatorio tardío", dueAt: "2026-12-30T12:00:00.000Z", reminderAt: "2026-12-31T12:00:00.000Z" })).status, 400);
+        assert.equal((await deadline({ title: "Fecha inválida", dueAt: "mañana" })).status, 400);
+        assert.equal((await deadline({ title: "Plazo del cliente", dueAt: "2026-12-30T12:00:00.000Z" }, seedCase, clientCookie)).status, 403);
+        assert.equal((await deadline({ title: "Plazo ajeno", dueAt: "2026-12-30T12:00:00.000Z" }, seedCase, otherCookie)).status, 404);
+      });
+    });
+
+    describe("caso borde", () => {
+      it("sin fecha de recordatorio nunca se avisa", async () => {
+        const title = unique("Sin recordatorio");
+        const created = await deadline({ title, dueAt: new Date(Date.now() - 3600000).toISOString() });
+        assert.equal(created.status, 201);
+        await delay(500);
+        assert.equal(await reminders(title), 0);
+      });
+      it("el recordatorio puede coincidir con el plazo", async () => {
+        const at = "2026-12-31T12:00:00.000Z";
+        const created = await deadline({ title: unique("Mismo instante"), dueAt: at, reminderAt: at });
+        assert.equal(created.status, 201);
+      });
+      it("no avisa plazos de causas archivadas", async () => {
+        const legalCase = (await request("/cases", "POST", { ...payload, title: "Causa que se archivará con plazo" }, lawyerCookie)).json;
+        const title = unique("Plazo de causa archivada");
+        assert.equal((await deadline({ title, dueAt: new Date(Date.now() + 86400000).toISOString(), reminderAt: new Date(Date.now() + 1200).toISOString() }, legalCase.id)).status, 201);
+        assert.equal((await request(`/cases/${legalCase.id}/archive`, "PATCH", { version: legalCase.version }, lawyerCookie)).status, 200);
+        await delay(2000);
+        assert.equal(await reminders(title), 0);
+      });
+      it("agrupa la agenda por día de Chile y no por día UTC", async () => {
+        const late = await deadline({ deadlineType: "MEETING", title: "Reunión de noche", dueAt: "2026-12-20T02:00:00.000Z" });
+        assert.equal(late.status, 201);
+        const sameDay = await request("/agenda?from=2026-12-19&to=2026-12-19", "GET", undefined, lawyerCookie);
+        assert.ok(sameDay.json.some((item) => item.id === late.json.id), "las 23:00 del 19-12 en Chile pertenecen al 19-12");
+        const nextDay = await request("/agenda?from=2026-12-20&to=2026-12-20", "GET", undefined, lawyerCookie);
+        assert.ok(!nextDay.json.some((item) => item.id === late.json.id));
+      });
+    });
+  });
+  // ───────────── Correcciones v1.2: E11, E12, E22, E23 y E24 (caso feliz, triste y borde) ─────────────
+  describe("E12 y E22 · Causa archivada de solo lectura y reactivación", () => {
+    const create = async (title) => (await request("/cases", "POST", { ...payload, title }, lawyerCookie)).json;
+    const archive = async (item) => (await request(`/cases/${item.id}/archive`, "PATCH", { version: item.version }, lawyerCookie)).json;
+    describe("caso feliz", () => {
+      it("archivar, reactivar y volver a editar; el historial registra ambos cambios", async () => {
+        const archived = await archive(await create("Causa que vuelve a activarse"));
+        assert.equal(archived.status, "Archivada");
+        const reactivated = await request(`/cases/${archived.id}/reactivate`, "PATCH", { version: archived.version }, lawyerCookie);
+        assert.equal(reactivated.status, 200, JSON.stringify(reactivated.json));
+        assert.equal(reactivated.json.status, "Activa");
+        assert.equal(reactivated.json.version, archived.version + 1);
+        const edited = await request(`/cases/${archived.id}`, "PUT", { ...payload, title: "Editada tras reactivar", version: reactivated.json.version }, lawyerCookie);
+        assert.equal(edited.status, 200);
+        const history = await db.query("SELECT from_status,to_status FROM case_status_history WHERE case_id=$1 ORDER BY changed_at,case_version", [archived.id]);
+        assert.deepEqual(history.rows.map((row) => `${row.from_status}→${row.to_status}`), ["null→Activa", "Activa→Archivada", "Archivada→Activa"]);
+        assert.equal((await request(`/cases/${archived.id}`, "GET", undefined, clientCookie)).json.status, "Activa", "el cliente ve la causa activa");
+      });
+    });
+    describe("caso triste", () => {
+      it("no edita una causa archivada y no cambia sus datos", async () => {
+        const archived = await archive(await create("Causa archivada intocable"));
+        const result = await request(`/cases/${archived.id}`, "PUT", { ...payload, title: "No debe guardarse", version: archived.version }, lawyerCookie);
+        assert.equal(result.status, 400);
+        assert.equal(result.json.code, "CASE_ARCHIVED");
+        const after = (await request(`/cases/${archived.id}`, "GET", undefined, lawyerCookie)).json;
+        assert.equal(after.title, "Causa archivada intocable");
+        assert.equal(after.version, archived.version);
+      });
+      it("rechaza reactivar una causa activa, ajena, de otro rol o con versión vieja", async () => {
+        const active = await create("Causa ya activa");
+        assert.equal((await request(`/cases/${active.id}/reactivate`, "PATCH", { version: active.version }, lawyerCookie)).status, 400);
+        const archived = await archive(await create("Causa archivada para permisos"));
+        assert.equal((await request(`/cases/${archived.id}/reactivate`, "PATCH", { version: archived.version }, clientCookie)).status, 403);
+        assert.equal((await request(`/cases/${archived.id}/reactivate`, "PATCH", { version: archived.version }, supervisorCookie)).status, 403);
+        assert.equal((await request(`/cases/${archived.id}/reactivate`, "PATCH", { version: archived.version }, otherCookie)).status, 404);
+        assert.equal((await request(`/cases/${archived.id}/reactivate`, "PATCH", { version: archived.version - 1 }, lawyerCookie)).status, 409);
+        assert.equal((await request(`/cases/${archived.id}/reactivate`, "PATCH", { version: 0 }, lawyerCookie)).status, 400);
+        assert.equal((await request(`/cases/${archived.id}`, "GET", undefined, lawyerCookie)).json.status, "Archivada");
+      });
+    });
+    describe("caso borde", () => {
+      it("una edición con versión vieja sobre una causa archivada informa el conflicto (409), no el archivo", async () => {
+        const original = await create("Causa archivada en otra pestaña");
+        await archive(original);
+        const stale = await request(`/cases/${original.id}`, "PUT", { ...payload, version: original.version }, lawyerCookie);
+        assert.equal(stale.status, 409);
+        assert.equal(stale.json.code, "CASE_VERSION_CONFLICT");
+      });
+      it("dos reactivaciones simultáneas: una gana y la otra recibe 409", async () => {
+        const archived = await archive(await create("Reactivación simultánea"));
+        const results = await Promise.all([1, 2].map(() => request(`/cases/${archived.id}/reactivate`, "PATCH", { version: archived.version }, lawyerCookie)));
+        assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+      });
+      it("tras reactivar se puede volver a registrar avances y plazos", async () => {
+        const archived = await archive(await create("Causa reactivada con avances"));
+        const reactivated = (await request(`/cases/${archived.id}/reactivate`, "PATCH", { version: archived.version }, lawyerCookie)).json;
+        const progress = await request(`/cases/${archived.id}/progress`, "PATCH", { stage: "IN_PROGRESS", summary: "Se retoma la gestión de la causa.", nextAction: "", version: reactivated.version }, lawyerCookie);
+        assert.equal(progress.status, 200, JSON.stringify(progress.json));
+        assert.equal((await request(`/cases/${archived.id}/deadlines`, "POST", { deadlineType: "OTHER", title: "Plazo tras reactivar", dueAt: "2026-12-30T12:00:00.000Z" }, lawyerCookie)).status, 201);
+      });
+    });
+  });
+
+  describe("E23 · Verificación del contenido de los archivos subidos", () => {
+    const seedCase = "33333333-3333-4333-8333-333333333333";
+    const upload = (name, type, content, path = `/cases/${seedCase}/documents`, fields = { title: "Archivo de prueba", category: "OTHER", visibility: "INTERNAL" }) => {
+      const form = new FormData();
+      form.append("file", new Blob([content], { type }), name);
+      for (const [key, value] of Object.entries(fields)) form.append(key, value);
+      return fetch(`${base}${path}`, { method: "POST", headers: { cookie: lawyerCookie }, body: form });
+    };
+    const documents = async () => Number((await db.query("SELECT count(*) FROM documents WHERE case_id=$1", [seedCase])).rows[0].count);
+    it("caso feliz: acepta un PDF y un PNG reales", async () => {
+      assert.equal((await upload("demanda.pdf", "application/pdf", Buffer.from("%PDF-1.4\n%prueba\n"))).status, 201);
+      assert.equal((await upload("foto.png", "image/png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]))).status, 201);
+    });
+    it("caso triste: rechaza contenido falsificado sin guardar el documento", async () => {
+      const before = await documents();
+      for (const [name, type, content] of [
+        ["falso.pdf", "application/pdf", Buffer.from("esto no es un pdf")],
+        ["virus.txt", "text/plain", Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03])],
+        ["foto.png", "image/png", Buffer.from("%PDF-1.4")],
+        ["demanda.png", "application/pdf", Buffer.from("%PDF-1.4")],
+      ]) {
+        const response = await upload(name, type, content);
+        assert.equal(response.status, 400, name);
+      }
+      assert.equal(await documents(), before);
+      const fakeExcel = await upload("movimientos.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Buffer.from("no es excel"), "/ingestion/file", {});
+      assert.equal(fakeExcel.status, 400, "antes la lectura del Excel fallaba con 500");
+    });
+    it("caso borde: archivo vacío y texto en Windows-1252", async () => {
+      assert.equal((await upload("vacio.txt", "text/plain", Buffer.alloc(0))).status, 400);
+      assert.equal((await upload("muñoz.txt", "text/plain", Buffer.from([0x4d, 0x75, 0xf1, 0x6f, 0x7a, 0x0d, 0x0a]))).status, 201);
+    });
+  });
+
+  describe("E11 · Importación con fechas en formato chileno", () => {
+    const headers = ["Correo cliente*", "Carátula*", "RIT", "Materia*", "Tribunal*", "Prioridad*", "Próxima fecha", "Descripción fecha", "Notas internas"];
+    const mapping = { clientEmail: 0, title: 1, rit: 2, matter: 3, court: 4, priority: 5, nextDate: 6, nextDateLabel: 7, internalNotes: 8 };
+    const preview = async (dates) => {
+      const rows = dates.map((date, index) => ["cliente@example.test", `Importación con fecha ${index}`, null, "Civil", "Juzgado Civil", "Media", date, null, null]);
+      const uploaded = await uploadRequest("/case-imports", await workbookBuffer(headers, rows), lawyerCookie);
+      assert.equal(uploaded.status, 201);
+      return (await request(`/case-imports/${uploaded.json.id}/validate`, "POST", { mapping }, lawyerCookie)).json;
+    };
+    it("caso feliz: dd-mm-aaaa, dd/mm/aaaa y dd.mm.aaaa escritos como texto", async () => {
+      const result = await preview(["18-09-2026", "18/09/2026", "18.09.2026"]);
+      assert.deepEqual(result.summary, { total: 3, valid: 3, duplicates: 0, errors: 0 });
+      assert.ok(result.rows.every((row) => row.data.nextDate === "2026-09-18"));
+    });
+    it("caso triste: una fecha imposible invalida la fila con un mensaje que muestra los formatos aceptados", async () => {
+      const result = await preview(["31-02-2026"]);
+      assert.equal(result.summary.errors, 1);
+      assert.ok(result.rows[0].errors.includes("Fecha inválida; usa DD-MM-AAAA o AAAA-MM-DD"));
+    });
+    it("caso borde: día y mes de un dígito y celda vacía", async () => {
+      const result = await preview(["8/9/2026", null]);
+      assert.deepEqual(result.rows.map((row) => row.data.nextDate), ["2026-09-08", ""]);
+      assert.equal(result.summary.valid, 2);
+    });
+  });
+
+  describe("E24 · Notificaciones paginadas", () => {
+    let userId, cookie;
+    before(async () => {
+      userId = randomUUID();
+      await db.query("INSERT INTO users (id,name,email,password_hash,role,lawyer_id) VALUES ($1,'Cliente con avisos',$2,$3,'CLIENT',$4)",
+        [userId, `avisos-${randomBytes(4).toString("hex")}@example.test`, await hashPassword(password), lawyerId]);
+      cookie = await sessionFor(userId);
+      // 65 avisos: 40 con la misma marca de tiempo (borde) y 25 en instantes distintos.
+      await db.query(`INSERT INTO notifications(user_id,notification_type,title,body,created_at)
+        SELECT $1,'CASE_UPDATE','Aviso '||n,'Cuerpo '||n,
+          CASE WHEN n<=40 THEN timestamptz '2026-11-01 12:00:00.123456+00' ELSE timestamptz '2026-11-02 12:00:00+00' + n*interval '1 second' END
+        FROM generate_series(1,65) n`, [userId]);
+    });
+    const page = (params) => request(`/notifications?${new URLSearchParams(params)}`, "GET", undefined, cookie);
+    it("caso feliz: recorre todas las páginas sin repetir ni omitir, de la más nueva a la más antigua", async () => {
+      const seen = [];
+      let after;
+      for (let guard = 0; guard < 10; guard++) {
+        const result = await page({ limit: "30", ...(after ? { before: after.createdAt, beforeId: after.id } : {}) });
+        assert.equal(result.status, 200);
+        seen.push(...result.json);
+        if (result.json.length < 30) break;
+        after = result.json.at(-1);
+      }
+      assert.equal(seen.length, 65);
+      assert.equal(new Set(seen.map((n) => n.id)).size, 65, "sin repetidos");
+      assert.equal(seen[0].title, "Aviso 65", "primero el más reciente");
+      const times = seen.map((n) => new Date(n.createdAt).getTime());
+      assert.deepEqual(times, [...times].sort((a, b) => b - a));
+    });
+    it("caso triste: cursor incompleto, límites fuera de rango y fecha inválida", async () => {
+      assert.equal((await page({ before: "2026-11-02T12:00:00.000Z" })).status, 400);
+      assert.equal((await page({ beforeId: randomUUID() })).status, 400);
+      assert.equal((await page({ limit: "0" })).status, 400);
+      assert.equal((await page({ limit: "101" })).status, 400);
+      assert.equal((await page({ before: "ayer", beforeId: randomUUID() })).status, 400);
+    });
+    it("caso borde: sin parámetros devuelve 30, y un usuario no ve avisos de otro", async () => {
+      assert.equal((await page({})).json.length, 30);
+      const others = await request("/notifications?limit=100", "GET", undefined, clientCookie);
+      assert.ok(!others.json.some((n) => /^Aviso \d+$/.test(n.title)));
+    });
+  });
+
+  // E21: una sola pregunta real, porque Lexi limita a 8 preguntas por minuto por IP (E26) y la suite ya usa 7.
+  // Los casos triste y borde de la normalización están en test/file-and-import-rules.test.mjs.
+  describe("E21 · Lexi reconoce referencias escritas con ceros", () => {
+    it("caso feliz: 'LC-00n' responde por la causa LC-n de un abogado nuevo", async () => {
+      const lexiLawyer = randomUUID(), lexiClient = randomUUID(), hash = await hashPassword(password);
+      const tag = randomBytes(4).toString("hex");
+      await db.query("INSERT INTO users (id,name,email,password_hash,role) VALUES ($1,'Abogada Lexi',$2,$3,'LAWYER')", [lexiLawyer, `lexi-${tag}@example.test`, hash]);
+      await db.query("INSERT INTO users (id,name,email,password_hash,role,lawyer_id) VALUES ($1,'Cliente Lexi',$2,$3,'CLIENT',$4)", [lexiClient, `lexi-cliente-${tag}@example.test`, hash, lexiLawyer]);
+      const reference = (await db.query(
+        "INSERT INTO cases (lawyer_id,client_id,title,matter,court,priority) VALUES ($1,$2,'Divorcio de mutuo acuerdo','Familia','Juzgado de Familia de Talca','Media') RETURNING reference",
+        [lexiLawyer, lexiClient],
+      )).rows[0].reference;
+      const answer = await request("/assistant/messages", "POST", { message: `¿Cuál es el estado de la causa LC-00${reference.slice(3)}?` }, await sessionFor(lexiLawyer));
+      assert.equal(answer.status, 201, JSON.stringify(answer.json));
+      assert.match(answer.json.content, new RegExp(`causa ${reference}\\b`));
+      assert.match(answer.json.content, /Divorcio de mutuo acuerdo/);
+    });
+  });
+
   it("invalida sesiones al cerrar sesión y al expirar", async () => {
     assert.equal(
       (await request("/auth/logout", "POST", {}, clientCookie)).status,
@@ -1194,11 +1812,147 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.equal((await request(`/admin/users/${otherId}/status`,"PATCH",{active:false},supervisorCookie)).status,200);
     assert.equal((await request(`/admin/users/${otherId}/status`,"PATCH",{active:true},supervisorCookie)).status,200);
   });
+  // ───────────── P4: cartera por asignaciones activas (E1, E19, CU-01 alterno) ─────────────
+  describe("P4 · Cartera de clientes compartida y reasignación", () => {
+    let otherOnlyClient, otherSession;
+    before(async () => {
+      // La prueba de reasignación desactiva y reactiva al otro abogado, lo que revoca sus sesiones anteriores.
+      otherSession = await sessionFor(otherId);
+      const createdClient = await request("/users/clients", "POST", {
+        name: "Cliente exclusivo del otro abogado", email: `exclusivo-${randomBytes(4).toString("hex")}@example.test`,
+      }, otherSession);
+      assert.equal(createdClient.status, 201, JSON.stringify(createdClient.json));
+      otherOnlyClient = createdClient.json;
+    });
+
+    describe("caso feliz", () => {
+      it("el abogado reasignado edita la causa y registra otra causa al mismo cliente (E1)", async () => {
+        const archived = await request(`/cases/${created}`, "GET", undefined, otherSession);
+        assert.equal(archived.status, 200);
+        assert.equal(archived.json.status, "Archivada", "la causa reasignada estaba archivada");
+        assert.equal((await request(`/cases/${created}/reactivate`, "PATCH", { version: archived.json.version }, otherSession)).status, 200);
+        const current = await request(`/cases/${created}`, "GET", undefined, otherSession);
+        const edited = await request(`/cases/${created}`, "PUT", {
+          ...payload, clientId: current.json.clientId, title: "Editada por el abogado reasignado", version: current.json.version,
+        }, otherSession);
+        assert.equal(edited.status, 200, JSON.stringify(edited.json));
+        assert.equal(edited.json.title, "Editada por el abogado reasignado");
+        const another = await request("/cases", "POST", { ...payload, clientId: current.json.clientId, title: "Nueva causa tras reasignación" }, otherSession);
+        assert.equal(another.status, 201, JSON.stringify(another.json));
+      });
+      it("asocia un cliente existente de otro abogado sin duplicar su cuenta (CU-01 alterno, E19)", async () => {
+        const before = Number((await db.query("SELECT count(*) FROM users WHERE email='otro-cliente@example.test'")).rows[0].count);
+        const linked = await request("/cases", "POST", {
+          ...payload, clientId: undefined, title: "Causa con cliente compartido",
+          newClientName: "Nombre ignorado", newClientEmail: "otro-cliente@example.test",
+        }, lawyerCookie);
+        assert.equal(linked.status, 201, JSON.stringify(linked.json));
+        assert.equal(linked.json.clientId, otherClientId);
+        assert.deepEqual(linked.json.onboarding, { clientCreated: false, clientLinked: true });
+        assert.equal(Number((await db.query("SELECT count(*) FROM users WHERE email='otro-cliente@example.test'")).rows[0].count), before);
+        const active = await db.query("SELECT lawyer_id FROM lawyer_client_assignments WHERE client_id=$1 AND ended_at IS NULL", [otherClientId]);
+        assert.deepEqual(active.rows.map((row) => row.lawyer_id).sort(), [lawyerId, otherId].sort(), "el otro abogado conserva su asignación");
+        assert.equal((await db.query("SELECT lawyer_id FROM users WHERE id=$1", [otherClientId])).rows[0].lawyer_id, otherId, "users.lawyer_id no se toca");
+        const portfolio = await request("/users/clients", "GET", undefined, lawyerCookie);
+        assert.ok(portfolio.json.some((client) => client.id === otherClientId));
+        const otherSees = await request("/cases", "GET", undefined, otherSession);
+        assert.ok(!otherSees.json.some((item) => item.id === linked.json.id), "cada abogado sigue viendo solo sus causas");
+        const clientCases = await request("/cases", "GET", undefined, await sessionFor(otherClientId));
+        assert.ok(clientCases.json.some((item) => item.id === linked.json.id), "el cliente ve la causa del nuevo abogado");
+      });
+    });
+
+    describe("caso triste", () => {
+      it("rechaza elegir por id un cliente que no está en la cartera", async () => {
+        const result = await request("/cases", "POST", { ...payload, clientId: otherOnlyClient.id, title: "Cliente fuera de cartera" }, lawyerCookie);
+        assert.equal(result.status, 400);
+        assert.match(result.json.message, /cartera/);
+      });
+      it("rechaza correos de abogados o coordinadores", async () => {
+        for (const email of ["otro@example.test", "coordinador@example.test"]) {
+          const result = await request("/cases", "POST", { ...payload, clientId: undefined, newClientName: "No es cliente", newClientEmail: email }, lawyerCookie);
+          assert.equal(result.status, 409, email);
+        }
+      });
+      it("rechaza asociar un cliente desactivado y no deja asignación", async () => {
+        assert.equal((await request(`/admin/users/${otherOnlyClient.id}/status`, "PATCH", { active: false }, supervisorCookie)).status, 200);
+        try {
+          const result = await request("/cases", "POST", { ...payload, clientId: undefined, newClientName: "Inactivo", newClientEmail: otherOnlyClient.email }, lawyerCookie);
+          assert.equal(result.status, 409);
+          assert.equal(Number((await db.query("SELECT count(*) FROM lawyer_client_assignments WHERE client_id=$1 AND lawyer_id=$2", [otherOnlyClient.id, lawyerId])).rows[0].count), 0);
+        } finally {
+          assert.equal((await request(`/admin/users/${otherOnlyClient.id}/status`, "PATCH", { active: true }, supervisorCookie)).status, 200);
+        }
+      });
+    });
+
+    describe("caso borde", () => {
+      it("reutilizar un cliente propio por correo no lo marca como asociado de nuevo", async () => {
+        const result = await request("/cases", "POST", { ...payload, clientId: undefined, newClientName: "Igual", newClientEmail: "CLIENTE@example.test" }, lawyerCookie);
+        assert.equal(result.status, 201, JSON.stringify(result.json));
+        assert.equal(result.json.clientId, clientId);
+        assert.deepEqual(result.json.onboarding, { clientCreated: false, clientLinked: false });
+        assert.equal(Number((await db.query("SELECT count(*) FROM lawyer_client_assignments WHERE client_id=$1 AND lawyer_id=$2 AND ended_at IS NULL", [clientId, lawyerId])).rows[0].count), 1);
+      });
+      it("dos registros simultáneos con el mismo cliente ajeno crean una sola asignación", async () => {
+        const email = otherOnlyClient.email.toUpperCase();
+        const results = await Promise.all([1, 2].map((n) =>
+          request("/cases", "POST", { ...payload, clientId: undefined, title: `Simultánea ${n}`, newClientName: "Cliente simultáneo", newClientEmail: email }, lawyerCookie)));
+        assert.deepEqual(results.map((r) => r.status), [201, 201]);
+        assert.deepEqual(results.map((r) => r.json.onboarding.clientLinked).sort(), [false, true]);
+        assert.equal(Number((await db.query("SELECT count(*) FROM lawyer_client_assignments WHERE client_id=$1 AND lawyer_id=$2 AND ended_at IS NULL", [otherOnlyClient.id, lawyerId])).rows[0].count), 1);
+      });
+      it("la importación desde Excel reconoce a los clientes asociados por asignación", async () => {
+        const headers = ["Correo cliente*", "Carátula*", "RIT", "Materia*", "Tribunal*", "Prioridad*", "Próxima fecha", "Descripción fecha", "Notas internas"];
+        const uploaded = await uploadRequest("/case-imports", await workbookBuffer(headers, [
+          ["otro-cliente@example.test", "Importada con cliente compartido", "C-COMPARTIDO-2026", "Civil", "Juzgado Civil", "Media", null, null, null],
+        ]), lawyerCookie);
+        assert.equal(uploaded.status, 201);
+        const mapping = { clientEmail: 0, title: 1, rit: 2, matter: 3, court: 4, priority: 5, nextDate: 6, nextDateLabel: 7, internalNotes: 8 };
+        const preview = await request(`/case-imports/${uploaded.json.id}/validate`, "POST", { mapping }, lawyerCookie);
+        assert.equal(preview.status, 201);
+        assert.deepEqual(preview.json.summary, { total: 1, valid: 1, duplicates: 0, errors: 0 });
+      });
+    });
+  });
   it("deriva contraseñas con sal única y verifica sin aceptar claves incorrectas", async () => {
     const hash = await hashPassword(password);
     const second = await hashPassword(password);
     assert.notEqual(hash, second);
     assert.equal(await verifyPassword(password, hash), true);
     assert.equal(await verifyPassword("incorrecta", hash), false);
+  });
+  // E26 va al final: agota a propósito el cupo por IP del inicio de sesión.
+  describe("E26 · Límites de peticiones por usuario y no por IP", () => {
+    const users = {};
+    before(async () => {
+      const hash = await hashPassword(password);
+      for (const name of ["A", "B"]) {
+        const id = randomUUID();
+        await db.query("INSERT INTO users (id,name,email,password_hash,role) VALUES ($1,$2,$3,$4,'LAWYER')",
+          [id, `Abogado límite ${name}`, `limite-${name.toLowerCase()}-${randomBytes(3).toString("hex")}@example.test`, hash]);
+        users[name] = { id, cookie: await sessionFor(id) };
+      }
+    });
+    const ask = (cookie) => request("/assistant/messages", "POST", { message: "¿Cómo registro una causa?" }, cookie);
+    it("caso feliz: dos usuarios desde la misma IP tienen cada uno su propio cupo de Lexi", async () => {
+      for (let i = 0; i < 8; i++) assert.equal((await ask(users.A.cookie)).status, 201, `pregunta ${i + 1} de A`);
+      assert.equal((await ask(users.A.cookie)).status, 429, "A agotó sus 8 preguntas por minuto");
+      assert.equal((await ask(users.B.cookie)).status, 201, "B no comparte el cupo de A aunque use la misma IP");
+    });
+    it("caso triste: abrir otra sesión no da un cupo nuevo y un token inventado no evita el límite", async () => {
+      assert.equal((await ask(await sessionFor(users.A.id))).status, 429, "el cupo es del usuario, no de la sesión");
+      const statuses = [];
+      for (let i = 0; i < 9; i++) statuses.push((await ask(`lex_session=${randomBytes(32).toString("hex")}`)).status);
+      assert.deepEqual(statuses.slice(0, 8), Array(8).fill(401), "tokens inventados: sin sesión");
+      assert.equal(statuses[8], 429, "los tokens inventados comparten el cupo de su IP");
+    });
+    it("caso borde: el inicio de sesión sigue limitado por IP aunque se envíe una sesión válida", async () => {
+      const statuses = [];
+      for (let i = 0; i < 12; i++)
+        statuses.push((await request("/auth/login", "POST", { email: "no-existe@example.test", password: "incorrecta" }, users.B.cookie)).status);
+      assert.ok(statuses.includes(429), `se esperaba 429 por IP: ${statuses.join(",")}`);
+      assert.ok(statuses.slice(0, statuses.indexOf(429)).every((status) => status === 401));
+    });
   });
 });

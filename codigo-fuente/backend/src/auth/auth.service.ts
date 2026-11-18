@@ -11,10 +11,12 @@ export interface SessionUser {
   mustChangePassword: boolean;
 }
 const SESSION_ABSOLUTE_HOURS = 8;
-// El frontend avisa a los 3 minutos y concede 10 segundos para confirmar.
-// Cinco segundos adicionales evitan que la latencia de red cierre una sesión
-// mientras la confirmación ya está viajando al servidor.
-const SESSION_IDLE_SECONDS = 3 * 60 + 10 + 5;
+// El frontend avisa tras 3 minutos sin actividad y concede 10 segundos para confirmar.
+// E14: el frontend informa actividad al servidor como máximo una vez por minuto, así que la
+// última señal recibida puede tener hasta 60 segundos de antigüedad cuando empieza a contar
+// la inactividad. Sin ese minuto, el servidor cerraba la sesión hasta ~45 s antes del aviso.
+// Cinco segundos adicionales cubren la latencia de red de la confirmación.
+export const SESSION_IDLE_SECONDS = 3 * 60 + 60 + 10 + 5;
 const digest = (token: string) =>
   createHash("sha256").update(token).digest("hex");
 @Injectable()

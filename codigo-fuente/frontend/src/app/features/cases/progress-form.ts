@@ -103,6 +103,17 @@ import { LegalCase, progressStages, stageLabel } from "../../core/models";
           registrar nuevos avances.
         </p>
       } @else {
+        @if (draftRestored()) {
+          <div class="conflict-panel" role="status">
+            <p>
+              Recuperamos el avance que no alcanzaste a guardar antes de que tu
+              sesión expirara. Revísalo antes de guardar.
+            </p>
+            <button type="button" class="button" (click)="discardRestoredDraft()">
+              Descartar borrador
+            </button>
+          </div>
+        }
         <form class="card case-form" [formGroup]="form" (ngSubmit)="submit()">
           <div class="field">
             <label for="progress-stage">Etapa de gestión</label
@@ -174,6 +185,8 @@ export class ProgressForm implements OnDestroy {
   readonly loading = signal(false);
   readonly busy = signal(false);
   readonly error = signal("");
+  /** E15: hay un borrador recuperado tras una expiración por inactividad. */
+  readonly draftRestored = signal(false);
   readonly conflict = signal(false);
   readonly reviewBusy = signal(false);
   readonly reviewError = signal("");
@@ -205,6 +218,24 @@ export class ProgressForm implements OnDestroy {
   discardPendingChanges() {
     this.form.markAsPristine();
   }
+  draftKey() {
+    return `avance:${this.id}`;
+  }
+  draftValue() {
+    return this.form.getRawValue();
+  }
+  private restoreDraft() {
+    const draft = this.unsaved.takeDraft<Partial<ReturnType<ProgressForm["form"]["getRawValue"]>>>(this.draftKey());
+    if (!draft || this.item()?.status === "Archivada") return;
+    this.form.patchValue(draft);
+    this.form.markAsDirty();
+    this.draftRestored.set(true);
+  }
+  discardRestoredDraft() {
+    this.draftRestored.set(false);
+    if (this.item()) this.apply(this.item()!);
+    this.form.markAsPristine();
+  }
   @HostListener("window:beforeunload", ["$event"]) beforeUnload(
     event: BeforeUnloadEvent,
   ) {
@@ -231,6 +262,7 @@ export class ProgressForm implements OnDestroy {
     this.api.get(this.id).subscribe({
       next: (c) => {
         this.apply(c);
+        this.restoreDraft();
         this.loading.set(false);
       },
       error: (e) => {

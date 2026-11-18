@@ -118,6 +118,8 @@ export interface CaseOnboarding {
   clientCreated: boolean;
   temporaryPassword?: string;
   deliveryStatus?: "DELIVERED" | "PENDING" | "FAILED";
+  /** Cliente existente (también de otro abogado) asociado a la cartera al registrar la causa. */
+  clientLinked?: boolean;
 }
 export type CreatedCase = LegalCase & { onboarding?: CaseOnboarding };
 
@@ -163,12 +165,13 @@ export interface ImportValidation {
   summary: { total: number; valid: number; errors: number; duplicates: number };
   rows: ImportPreviewRow[];
 }
-export interface Deadline { id:string;caseId:string;reference:string;caseTitle:string;deadlineType:string;title:string;description:string|null;dueAt:string;reminderAt:string|null;status:string; }
+export interface Deadline { id:string;caseId:string;reference:string;caseTitle:string;deadlineType:string;title:string;description:string|null;dueAt:string;reminderAt:string|null;urgency:"Alta"|"Media"|"Baja";status:string; }
 export interface Communication { id:string;message:string;channel:string;deliveryStatus:string;createdAt:string;authorName:string; }
 export interface CaseDocument { id:string;title:string;description:string|null;category:string;visibility:string;versionId:string;version:number;originalName:string;mimeType:string;sizeBytes:number;uploadedBy:string;createdAt:string; }
 export interface DocumentRequest { id:string;caseId:string;reference:string;title:string;description:string|null;dueAt:string|null;status:string;createdAt:string; }
 export interface AppNotification { id:string;caseId:string|null;type:string;title:string;body:string;channel:string;deliveryStatus:string;readAt:string|null;createdAt:string; }
-export interface IngestionItem { id:string;caseId:string|null;sourceType:string;sourceName:string;detectedReference:string|null;detectedDate:string|null;detectedCourt:string|null;movementType:string;suggestedSummary:string;correctedSummary:string|null;status:string;createdAt:string; }
+export interface IngestionItem { id:string;caseId:string|null;caseReference:string|null;sourceType:string;sourceName:string;detectedReference:string|null;detectedDate:string|null;detectedTime:string|null;detectedCourt:string|null;movementType:string;suggestedSummary:string;correctedSummary:string|null;status:string;suggestionSource:"IA"|"REGLAS";confidence:"ALTA"|"MEDIA"|"BAJA";formatRecognized:boolean;missingFields:string[];edited:boolean;createdAt:string;reviewedAt:string|null; }
+export interface IngestionReview { status:"CONFIRMED"|"REJECTED";summary?:string;caseId?:string;movementType?:string;detectedDate?:string|null;detectedTime?:string|null;court?:string|null; }
 export interface AssistantMessage { id?:number;role:"USER"|"ASSISTANT";content:string;confidence?:number;createdAt?:string; }
 export interface AssistantSession { conversationId:string;messages:AssistantMessage[];quota:{limit:number;used:number;remaining:number}; }
 export interface ManagedUser { id:string;name:string;email:string;phone:string|null;role:string;active:boolean;office:string|null;lastLoginAt:string|null;createdAt:string;caseCount:number; }

@@ -1,6 +1,7 @@
 import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
 import { SessionUser } from "../auth/auth.service";
 import { DatabaseService } from "../database/database.service";
+import { normalizeReference } from "../product/ingestion-rules";
 
 const DAILY_LIMIT = 20;
 const normalize = (value: string) =>
@@ -89,9 +90,10 @@ export class AssistantService {
     return { conversationId: id, messages: [], quota: { limit: DAILY_LIMIT, used, remaining: Math.max(0, DAILY_LIMIT - used) } };
   }
 
+  /** E21: "LC-01", "lc 0001" o "LC#1" se normalizan a "LC-1", como las genera el servidor. */
   private caseIdentifier(message: string) {
     const reference = message.match(/\bLC\s*[-:#]?\s*(\d+)\b/i);
-    if (reference) return `LC-${reference[1]}`;
+    if (reference) return normalizeReference(`LC-${reference[1]}`);
     return message.match(/\b[A-Z]{1,4}-\d{1,10}-\d{4}\b/i)?.[0] || null;
   }
 
