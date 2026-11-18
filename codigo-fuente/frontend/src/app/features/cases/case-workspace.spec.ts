@@ -19,6 +19,7 @@ describe("Registro de fecha clave y recordatorio", () => {
     fixture.detectChanges();
     component = fixture.componentInstance;
     http = TestBed.inject(HttpTestingController);
+    http.expectOne("/api/cases/case-1/timeline").flush([]);
     http.expectOne("/api/cases/case-1/communications").flush([]);
     http.expectOne("/api/cases/case-1/documents").flush([]);
     http.expectOne("/api/document-requests").flush([]);

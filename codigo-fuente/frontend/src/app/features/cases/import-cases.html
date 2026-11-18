@@ -8,8 +8,8 @@
   </div>
   <a
     class="button"
-    href="/plantilla-importacion-causas-v2.xlsx"
-    download="plantilla-importacion-causas-v2.xlsx"
+    href="/plantilla-importacion-causas-v3.xlsx"
+    download="plantilla-importacion-causas-v3.xlsx"
   >
     Descargar plantilla
   </a>
@@ -132,9 +132,10 @@
       </table>
     </div>
     <p class="footnote mapping-help">
-      <span class="required">*</span> Campos obligatorios. El correo debe
-      identificar un cliente activo de tu cartera; la importación nunca crea
-      clientes ni asigna causas a otro abogado.
+      <span class="required">*</span> Campos obligatorios. Si el correo no
+      corresponde a un cliente de tu cartera, se crea su cuenta con una contraseña
+      temporal (indica su nombre); si es cliente de otro abogado, se asocia a tu
+      cartera sin duplicar su cuenta. Las causas siempre quedan a tu cargo.
     </p>
   </section>
   <div class="import-actions">
@@ -162,6 +163,12 @@
         <span class="summary-chip valid"><i></i>{{ result.summary.valid }} nuevas</span>
         <span class="summary-chip duplicate"><i></i>{{ result.summary.duplicates }} duplicadas</span>
         <span class="summary-chip invalid"><i></i>{{ result.summary.errors }} con error</span>
+        @if (result.summary.newClients) {
+          <span class="summary-chip valid"><i></i>{{ result.summary.newClients }} {{ result.summary.newClients === 1 ? "cliente nuevo" : "clientes nuevos" }}</span>
+        }
+        @if (result.summary.linkedClients) {
+          <span class="summary-chip valid"><i></i>{{ result.summary.linkedClients }} de otra cartera</span>
+        }
       </div>
       <div class="table-scroll">
         <table class="preview-table">
@@ -189,6 +196,9 @@
                   {{ row.data.clientName || row.data.clientEmail || "—" }}
                   @if (row.data.clientName) {
                     <small>{{ row.data.clientEmail }}</small>
+                  }
+                  @if (clientActionLabel(row)) {
+                    <small class="client-action">{{ clientActionLabel(row) }}</small>
                   }
                 </td>
                 <td>
@@ -230,6 +240,33 @@
           Se omitieron {{ omitted() }} filas con errores o duplicadas.
         }
       </p>
+      @if (linkedClients()) {
+        <p>Se asociaron {{ linkedClients() }} clientes de otra cartera a la tuya.</p>
+      }
+      @if (newClients().length) {
+        <div class="credentials" role="region" aria-label="Clientes creados">
+          <h3>Clientes creados</h3>
+          <p class="section-sub">
+            Cada cliente deberá cambiar su contraseña temporal en su primer ingreso.
+            Guarda esta información ahora: no se volverá a mostrar.
+          </p>
+          <div class="table-scroll">
+            <table class="preview-table">
+              <thead><tr><th>Cliente</th><th>Correo</th><th>Contraseña temporal</th><th>Entrega</th></tr></thead>
+              <tbody>
+                @for (client of newClients(); track client.email) {
+                  <tr>
+                    <td>{{ client.name }}</td>
+                    <td>{{ client.email }}</td>
+                    <td class="mono">{{ client.temporaryPassword }}</td>
+                    <td>{{ deliveryLabel(client) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
       <a class="button primary" routerLink="/causas">Ir al panel de causas</a>
     </section>
   }

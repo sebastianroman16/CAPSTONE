@@ -12,6 +12,8 @@ export class ProductController {
   @Get("agenda") agenda(@Req() r:AuthRequest,@Query("from")f?:string,@Query("to")t?:string){return this.product.agenda(r.user,f,t);}
   @Post("cases/:id/deadlines") deadline(@Param("id",ParseUUIDPipe)id:string,@Body()d:DeadlineDto,@Req()r:AuthRequest){return this.product.createDeadline(id,d,r.user);}
   @Patch("deadlines/:id") deadlineStatus(@Param("id",ParseUUIDPipe)id:string,@Body()d:DeadlineStatusDto,@Req()r:AuthRequest){return this.product.deadlineStatus(id,d.status,r.user);}
+  @Get("pending") pending(@Req() r:AuthRequest){return this.product.pending(r.user);}
+  @Get("cases/:id/timeline") timeline(@Param("id",ParseUUIDPipe)id:string,@Req()r:AuthRequest){return this.product.timeline(id,r.user);}
   @Get("cases/:id/communications") communications(@Param("id",ParseUUIDPipe)id:string,@Req()r:AuthRequest){return this.product.communications(id,r.user);}
   @Post("cases/:id/communications") communication(@Param("id",ParseUUIDPipe)id:string,@Body()d:CommunicationDto,@Req()r:AuthRequest){return this.product.sendCommunication(id,d,r.user);}
   @Get("notifications") notifications(@Req()r:AuthRequest,@Query()q:NotificationQueryDto){return this.product.notifications(r.user,q);}

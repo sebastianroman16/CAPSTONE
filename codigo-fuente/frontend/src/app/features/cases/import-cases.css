@@ -260,3 +260,13 @@
     font-size: 14px;
   }
 }
+
+.client-action {
+  display: block;
+  color: var(--olive);
+}
+
+.credentials {
+  margin: 1rem 0;
+  text-align: left;
+}

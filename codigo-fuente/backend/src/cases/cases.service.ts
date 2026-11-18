@@ -9,6 +9,7 @@ import { DatabaseService } from "../database/database.service";
 import { SessionUser } from "../auth/auth.service";
 import { CreateCaseDto, CaseFieldsDto, UpdateCaseDto } from "./case.dto";
 import { createTemporaryPassword, hashPassword } from "../auth/password";
+import { deliverClientCredentials } from "./client-credentials";
 @Injectable()
 export class CasesService {
   constructor(private readonly db: DatabaseService) {}
@@ -152,26 +153,7 @@ export class CasesService {
   }
 
   private async deliverClientCredentials(email: string, name: string, temporaryPassword: string) {
-    const url = process.env.CLIENT_CREDENTIALS_WEBHOOK_URL;
-    let deliveryStatus: "DELIVERED" | "PENDING" | "FAILED" = "PENDING";
-    if (url) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            to: email,
-            template: "client-welcome",
-            name,
-            temporaryPassword,
-            loginUrl: `${process.env.FRONTEND_ORIGIN || "http://localhost:4200"}/iniciar-sesion`,
-          }),
-        });
-        deliveryStatus = response.ok ? "DELIVERED" : "FAILED";
-      } catch {
-        deliveryStatus = "FAILED";
-      }
-    }
+    const deliveryStatus = await deliverClientCredentials(email, name, temporaryPassword);
     return { clientCreated: true as const, temporaryPassword, deliveryStatus };
   }
 

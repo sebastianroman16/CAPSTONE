@@ -13,6 +13,8 @@ describe("Importación de causas", () => {
   let http: HttpTestingController;
   const suggestedMapping: Record<ImportField, number | null> = {
     clientEmail: 0,
+    clientName: null,
+    clientPhone: null,
     title: 1,
     rit: 2,
     matter: 3,
@@ -43,7 +45,7 @@ describe("Importación de causas", () => {
     expiresAt: "2026-10-17T20:00:00.000Z",
   };
   const preview: ImportValidation = {
-    summary: { total: 3, valid: 1, errors: 1, duplicates: 1 },
+    summary: { total: 3, valid: 1, errors: 1, duplicates: 1, newClients: 0, linkedClients: 0 },
     rows: [
       {
         rowNumber: 2,
@@ -113,5 +115,41 @@ describe("Importación de causas", () => {
     component.assignments.set(["clientEmail", "title"]);
     component.assign(1, "clientEmail");
     expect(component.assignments()).toEqual([null, "clientEmail"]);
+  });
+  describe("clientes nuevos al importar (mockup 08, CU-01)", () => {
+    const row = (action: "CREATE" | "LINK" | "EXISTING" | undefined, status: "VALID" | "ERROR" = "VALID") => ({
+      rowNumber: 2, status, detail: "", errors: [],
+      data: { clientEmail: "nueva@example.test", clientName: "Fernanda Castillo", title: "Despido", rit: "", matter: "Laboral",
+        court: "Juzgado", priority: "Alta", nextDate: "", nextDateLabel: "", internalNotes: "", clientAction: action },
+    });
+    function reachPreview() {
+      component.fileSelected({ target: { files: [new File(["xlsx"], "causas.xlsx")] } } as unknown as Event);
+      component.upload();
+      http.expectOne("/api/case-imports").flush(batch);
+      component.validate();
+    }
+    it("caso feliz: muestra la clave temporal de cada cliente creado al confirmar", () => {
+      reachPreview();
+      http.expectOne("/api/case-imports/batch-1/validate").flush({ ...preview, summary: { ...preview.summary, newClients: 1 } });
+      component.confirm();
+      http.expectOne("/api/case-imports/batch-1/confirm").flush({
+        imported: 1, omitted: 0, summary: preview.summary, linkedClients: 0,
+        newClients: [{ name: "Fernanda Castillo", email: "nueva@example.test", temporaryPassword: "Lex-temporal!", deliveryStatus: "PENDING" }],
+      });
+      expect(component.newClients().map((client) => client.email)).toEqual(["nueva@example.test"]);
+      expect(component.deliveryLabel(component.newClients()[0])).toBe("Entrégala tú al cliente");
+    });
+    it("caso triste: una fila con error no se etiqueta como cliente nuevo y un envío fallido se informa", () => {
+      expect(component.clientActionLabel(row("CREATE", "ERROR"))).toBe("");
+      expect(component.deliveryLabel({ name: "A", email: "a@example.test", temporaryPassword: "x", deliveryStatus: "FAILED" })).toContain("falló");
+    });
+    it("caso borde: distingue cliente nuevo, de otra cartera y propio; nombre y teléfono son opcionales en el mapeo", () => {
+      expect(component.clientActionLabel(row("CREATE"))).toBe("Cliente nuevo");
+      expect(component.clientActionLabel(row("LINK"))).toBe("Se asocia a tu cartera");
+      expect(component.clientActionLabel(row("EXISTING"))).toBe("");
+      expect(component.fields.filter((field) => ["clientName", "clientPhone"].includes(field.value)).every((field) => !field.required)).toBe(true);
+      reachPreview();
+      expect(http.expectOne("/api/case-imports/batch-1/validate").request.body.mapping).toEqual({ ...suggestedMapping, clientName: null, clientPhone: null });
+    });
   });
 });

@@ -38,6 +38,31 @@ class UsersController {
     const client=await this.db.pool.connect();
     try{await client.query("BEGIN");const row=(await client.query(`INSERT INTO users(name,email,phone,password_hash,role,lawyer_id,must_change_password) VALUES($1,$2,$3,$4,'CLIENT',$5,true) RETURNING id,name,email,phone`,[dto.name,dto.email.toLowerCase(),dto.phone||null,await hashPassword(temporaryPassword),req.user.id])).rows[0];await client.query("COMMIT");return {...row,temporaryPassword};}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
   }
+  /**
+   * HU-05 (mockup 04): datos de la corporación en el perfil. El sistema atiende a una corporación,
+   * configurada en CORPORATION_NAME; la oficina es la del usuario o, para el cliente, la de su abogado.
+   */
+  @Get("me/summary") async summary(@Req() req: AuthRequest) {
+    const user = req.user;
+    const own = (await this.db.query(`SELECT office,created_at AS "memberSince" FROM users WHERE id=$1`, [user.id])).rows[0];
+    const scope = user.role === "LAWYER" ? "lawyer_id=$1" : user.role === "CLIENT" ? "client_id=$1" : "true";
+    const activeCases = (await this.db.query(
+      `SELECT count(*)::int AS n FROM cases WHERE status='Activa' AND ${scope}`,
+      user.role === "SUPERVISOR" ? [] : [user.id],
+    )).rows[0].n;
+    const lawyers = user.role !== "CLIENT" ? [] : (await this.db.query(
+      `SELECT u.name,u.email,u.phone,u.office FROM lawyer_client_assignments a JOIN users u ON u.id=a.lawyer_id
+       WHERE a.client_id=$1 AND a.ended_at IS NULL AND u.active=true ORDER BY a.assigned_at,u.name`,
+      [user.id],
+    )).rows;
+    return {
+      corporation: process.env.CORPORATION_NAME?.trim() || "Corporación de Asistencia Judicial",
+      office: own.office ?? lawyers.find((lawyer: any) => lawyer.office)?.office ?? null,
+      memberSince: own.memberSince,
+      activeCases,
+      lawyers: lawyers.map(({ name, email, phone }: any) => ({ name, email, phone })),
+    };
+  }
   @Patch("me") @AllowTemporaryPassword()
   async profile(@Req()req:AuthRequest,@Body()dto:ProfileDto){
     const conflict=(await this.db.query("SELECT 1 FROM users WHERE email=$1 AND id<>$2",[dto.email.toLowerCase(),req.user.id])).rowCount;

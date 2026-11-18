@@ -90,7 +90,7 @@ export const routes: Routes = [
         loadComponent: () =>
           import("./features/profile/profile").then((m) => m.Profile),
       },
-      { path:"agenda",loadComponent:()=>import("./features/agenda/agenda").then(m=>m.Agenda) },
+      { path:"agenda",canActivate:[lawyerOnly],loadComponent:()=>import("./features/agenda/agenda").then(m=>m.Agenda) },
       { path:"notificaciones",loadComponent:()=>import("./features/notifications/notifications").then(m=>m.Notifications) },
       { path:"ingesta",canActivate:[lawyerOnly],loadComponent:()=>import("./features/ingestion/ingestion").then(m=>m.Ingestion) },
     ],

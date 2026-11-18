@@ -2,6 +2,7 @@ import { HttpClient } from "@angular/common/http";
 import { inject, Injectable } from "@angular/core";
 import {
   ImportBatch,
+  ImportedClient,
   ImportField,
   ImportValidation,
 } from "./models";
@@ -27,6 +28,8 @@ export class CaseImportService {
       imported: number;
       omitted: number;
       summary: ImportValidation["summary"];
+      newClients: ImportedClient[];
+      linkedClients: number;
     }>(`/api/case-imports/${id}/confirm`, {});
   }
 }

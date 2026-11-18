@@ -375,8 +375,8 @@ describe("API real con PostgreSQL y esquema aislado", () => {
         null,
       ],
       [
-        "otro-cliente@example.test",
-        "Cliente ajeno",
+        "otro@example.test",
+        "Cuenta que no es cliente",
         "C-AJENA-2026",
         "Laboral",
         "Juzgado Laboral",
@@ -414,7 +414,7 @@ describe("API real con PostgreSQL y esquema aislado", () => {
       lawyerCookie,
     );
     assert.equal(preview.status, 201);
-    assert.deepEqual(preview.json.summary, { total: 3, valid: 1, duplicates: 1, errors: 1 });
+    assert.deepEqual(preview.json.summary, { total: 3, valid: 1, duplicates: 1, errors: 1, newClients: 0, linkedClients: 0 });
     assert.equal(
       (await request(`/case-imports/${uploaded.json.id}/validate`, "POST", { mapping }, otherCookie)).status,
       404,
@@ -1696,7 +1696,7 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     };
     it("caso feliz: dd-mm-aaaa, dd/mm/aaaa y dd.mm.aaaa escritos como texto", async () => {
       const result = await preview(["18-09-2026", "18/09/2026", "18.09.2026"]);
-      assert.deepEqual(result.summary, { total: 3, valid: 3, duplicates: 0, errors: 0 });
+      assert.deepEqual(result.summary, { total: 3, valid: 3, duplicates: 0, errors: 0, newClients: 0, linkedClients: 0 });
       assert.ok(result.rows.every((row) => row.data.nextDate === "2026-09-18"));
     });
     it("caso triste: una fecha imposible invalida la fila con un mensaje que muestra los formatos aceptados", async () => {
@@ -1911,7 +1911,245 @@ describe("API real con PostgreSQL y esquema aislado", () => {
         const mapping = { clientEmail: 0, title: 1, rit: 2, matter: 3, court: 4, priority: 5, nextDate: 6, nextDateLabel: 7, internalNotes: 8 };
         const preview = await request(`/case-imports/${uploaded.json.id}/validate`, "POST", { mapping }, lawyerCookie);
         assert.equal(preview.status, 201);
-        assert.deepEqual(preview.json.summary, { total: 1, valid: 1, duplicates: 0, errors: 0 });
+        assert.deepEqual(preview.json.summary, { total: 1, valid: 1, duplicates: 0, errors: 0, newClients: 0, linkedClients: 0 });
+      });
+    });
+  });
+  // ───────────── Detalles de los mockups de Fase 1 (caso feliz, triste y borde) ─────────────
+  describe("Detalles de los mockups de Fase 1", () => {
+    const supervisorId = "44444444-4444-4444-8444-444444444444";
+    let lawyer, client, other, supervisor, legalCase;
+    before(async () => {
+      lawyer = await sessionFor(lawyerId);
+      client = await sessionFor(clientId);
+      other = await sessionFor(otherId);
+      supervisor = await sessionFor(supervisorId);
+      const result = await request("/cases", "POST", { ...payload, title: "Causa para detalles de mockups" }, lawyer);
+      assert.equal(result.status, 201, JSON.stringify(result.json));
+      legalCase = result.json;
+    });
+
+    describe("Perfil con datos de la corporación (HU-05, mockup 04)", () => {
+      it("caso feliz: el cliente ve la corporación, sus causas activas y a su abogado asignado", async () => {
+        const result = await request("/users/me/summary", "GET", undefined, client);
+        assert.equal(result.status, 200);
+        assert.equal(result.json.corporation, "Corporación de Asistencia Judicial");
+        const active = Number((await db.query("SELECT count(*) FROM cases WHERE client_id=$1 AND status='Activa'", [clientId])).rows[0].count);
+        assert.equal(result.json.activeCases, active);
+        assert.ok(result.json.lawyers.some((item) => item.email === "abogado@example.test"));
+        assert.ok(!Number.isNaN(new Date(result.json.memberSince).getTime()));
+      });
+      it("caso triste: sin sesión responde 401", async () => {
+        assert.equal((await request("/users/me/summary")).status, 401);
+      });
+      it("caso borde: el cliente hereda la oficina de su abogado y el abogado no tiene abogados asignados", async () => {
+        await db.query("UPDATE users SET office='Oficina Santiago Centro' WHERE id=$1", [lawyerId]);
+        try {
+          assert.equal((await request("/users/me/summary", "GET", undefined, client)).json.office, "Oficina Santiago Centro");
+          const own = (await request("/users/me/summary", "GET", undefined, lawyer)).json;
+          assert.deepEqual(own.lawyers, []);
+          assert.equal(own.activeCases, Number((await db.query("SELECT count(*) FROM cases WHERE lawyer_id=$1 AND status='Activa'", [lawyerId])).rows[0].count));
+          const all = (await request("/users/me/summary", "GET", undefined, supervisor)).json;
+          assert.equal(all.activeCases, Number((await db.query("SELECT count(*) FROM cases WHERE status='Activa'")).rows[0].count));
+        } finally {
+          await db.query("UPDATE users SET office=NULL WHERE id=$1", [lawyerId]);
+        }
+      });
+    });
+
+    describe("Tipo de mensaje y visto por el cliente (HU-14, HU-15, mockup 07)", () => {
+      const send = (body, cookie = lawyer) => request(`/cases/${legalCase.id}/communications`, "POST", { channel: "IN_APP", ...body }, cookie);
+      const list = (cookie) => request(`/cases/${legalCase.id}/communications`, "GET", undefined, cookie);
+      it("caso feliz: el abogado envía un recordatorio de audiencia y ve cuándo lo leyó el cliente", async () => {
+        const sent = await send({ message: "Recuerda la audiencia del lunes a las 9:30.", category: "HEARING_REMINDER" });
+        assert.equal(sent.status, 201);
+        assert.equal(sent.json.category, "HEARING_REMINDER");
+        assert.equal(sent.json.readAt, null);
+        assert.equal((await list(client)).status, 200);
+        const seen = (await list(lawyer)).json.find((item) => item.id === sent.json.id);
+        assert.ok(seen.readAt, "el mensaje debería quedar visto");
+      });
+      it("caso triste: un tipo desconocido responde 400 y el coordinador no marca mensajes como vistos", async () => {
+        assert.equal((await send({ message: "Tipo inventado", category: "URGENTE" })).status, 400);
+        const sent = await send({ message: "Mensaje que solo revisa el coordinador." });
+        assert.equal((await list(supervisor)).status, 200);
+        assert.equal((await list(lawyer)).json.find((item) => item.id === sent.json.id).readAt, null);
+        assert.equal((await send({ message: "El cliente no envía estados." }, client)).status, 403);
+      });
+      it("caso borde: sin tipo es una actualización de estado y una segunda lectura conserva la primera fecha", async () => {
+        const sent = await send({ message: "Se presentó el escrito de contestación." });
+        assert.equal(sent.json.category, "STATUS_UPDATE");
+        await list(lawyer);
+        assert.equal((await list(lawyer)).json.find((item) => item.id === sent.json.id).readAt, null);
+        await list(client);
+        const first = (await list(lawyer)).json.find((item) => item.id === sent.json.id).readAt;
+        await delay(20);
+        await list(client);
+        assert.equal((await list(lawyer)).json.find((item) => item.id === sent.json.id).readAt, first);
+      });
+    });
+
+    describe("Línea de tiempo del cliente (HU-21, mockup 13)", () => {
+      const timeline = (cookie, id = legalCase.id) => request(`/cases/${id}/timeline`, "GET", undefined, cookie);
+      const ingestFor = async (text) => {
+        const result = await request("/ingestion/text", "POST", { sourceType: "TEXT", sourceName: "Aviso para línea de tiempo", text, caseId: legalCase.id }, lawyer);
+        assert.equal(result.status, 201, JSON.stringify(result.json));
+        return result.json;
+      };
+      it("caso feliz: muestra el ingreso y el movimiento confirmado con su fecha y tribunal", async () => {
+        const item = await ingestFor(`En causa ${legalCase.reference}, el 2° Juzgado Civil de Santiago dictó resolución con fecha 02/08/2026 que admite la demanda a trámite.`);
+        const reviewed = await request(`/ingestion/${item.id}/review`, "PATCH", { status: "CONFIRMED", caseId: legalCase.id, movementType: "RESOLUCIÓN", detectedDate: "2026-08-02" }, lawyer);
+        assert.equal(reviewed.status, 200, JSON.stringify(reviewed.json));
+        const result = await timeline(client);
+        assert.equal(result.status, 200);
+        const movement = result.json.find((event) => event.kind === "MOVEMENT");
+        assert.equal(movement.title, "Resolución del tribunal");
+        assert.equal(movement.date, "2026-08-02");
+        assert.match(result.json.find((event) => event.kind === "CASE_CREATED").detail, new RegExp(legalCase.reference));
+      });
+      it("caso triste: excluye sugerencias pendientes o rechazadas y responde 404 a terceros", async () => {
+        const pending = await ingestFor(`En causa ${legalCase.reference} se notifica una sugerencia todavía pendiente.`);
+        const rejected = await ingestFor(`En causa ${legalCase.reference} se notifica una sugerencia que será rechazada.`);
+        assert.equal((await request(`/ingestion/${rejected.id}/review`, "PATCH", { status: "REJECTED" }, lawyer)).status, 200);
+        const summaries = (await timeline(client)).json.map((event) => event.detail);
+        assert.ok(!summaries.some((text) => text.includes("todavía pendiente") || text.includes("será rechazada")));
+        assert.equal(pending.status, "PENDING");
+        assert.equal((await timeline(other)).status, 404);
+        const otherClient = await sessionFor(otherClientId);
+        assert.equal((await timeline(otherClient)).status, 404);
+      });
+      it("caso borde: archivar y reactivar quedan como hitos, ordenados del más reciente al más antiguo", async () => {
+        const current = (await request(`/cases/${legalCase.id}`, "GET", undefined, lawyer)).json;
+        const archived = await request(`/cases/${legalCase.id}/archive`, "PATCH", { version: current.version }, lawyer);
+        assert.equal(archived.status, 200);
+        assert.equal((await request(`/cases/${legalCase.id}/reactivate`, "PATCH", { version: archived.json.version }, lawyer)).status, 200);
+        const events = (await timeline(client)).json;
+        const status = events.filter((event) => event.kind === "STATUS").map((event) => event.title);
+        assert.deepEqual(status, ["Causa reactivada", "Causa archivada"]);
+        const dates = events.map((event) => event.date);
+        assert.deepEqual(dates, [...dates].sort().reverse());
+        assert.equal((await timeline(supervisor)).status, 200);
+      });
+    });
+
+    describe("Pendientes con pestañas (HU-13, mockup 09)", () => {
+      const pending = (cookie = lawyer) => request("/pending", "GET", undefined, cookie);
+      const inHours = (hours) => new Date(Date.now() + hours * 3600000).toISOString();
+      it("caso feliz: agrupa plazos sin realizar y solicitudes de documentos por vencer", async () => {
+        const deadline = await request(`/cases/${legalCase.id}/deadlines`, "POST", { deadlineType: "FILING", title: "Vence plazo de contestación", dueAt: inHours(30), urgency: "Media" }, lawyer);
+        assert.equal(deadline.status, 201);
+        const requested = await request(`/cases/${legalCase.id}/document-requests`, "POST", { assignedTo: clientId, title: "Comprobantes de renta", dueAt: inHours(50) }, lawyer);
+        assert.equal(requested.status, 201, JSON.stringify(requested.json));
+        const result = await pending();
+        assert.equal(result.status, 200);
+        const kinds = Object.fromEntries(result.json.filter((item) => [deadline.json.id, requested.json.id].includes(item.id)).map((item) => [item.id, item]));
+        assert.equal(kinds[deadline.json.id].kind, "DEADLINE");
+        assert.equal(kinds[requested.json.id].kind, "DOCUMENT_REQUEST");
+        assert.equal(kinds[requested.json.id].title, "Vence solicitud: Comprobantes de renta");
+        assert.equal(kinds[requested.json.id].clientName.length > 0, true);
+      });
+      it("caso triste: el cliente no accede y se excluyen realizados, solicitudes sin fecha y causas archivadas", async () => {
+        assert.equal((await pending(client)).status, 403);
+        const done = await request(`/cases/${legalCase.id}/deadlines`, "POST", { deadlineType: "OTHER", title: "Plazo ya realizado", dueAt: inHours(10) }, lawyer);
+        assert.equal((await request(`/deadlines/${done.json.id}`, "PATCH", { status: "COMPLETED" }, lawyer)).status, 200);
+        const noDate = await request(`/cases/${legalCase.id}/document-requests`, "POST", { assignedTo: clientId, title: "Solicitud sin fecha límite" }, lawyer);
+        const archivedCase = (await request("/cases", "POST", { ...payload, title: "Causa archivada con pendiente" }, lawyer)).json;
+        const hidden = await request(`/cases/${archivedCase.id}/deadlines`, "POST", { deadlineType: "OTHER", title: "Pendiente de causa archivada", dueAt: inHours(5) }, lawyer);
+        assert.equal((await request(`/cases/${archivedCase.id}/archive`, "PATCH", { version: archivedCase.version }, lawyer)).status, 200);
+        const ids = (await pending()).json.map((item) => item.id);
+        for (const id of [done.json.id, noDate.json.id, hidden.json.id]) assert.ok(!ids.includes(id));
+      });
+      it("caso borde: incluye los vencidos y, a igual fecha, la urgencia alta va primero", async () => {
+        const due = inHours(70);
+        const low = await request(`/cases/${legalCase.id}/deadlines`, "POST", { deadlineType: "OTHER", title: "Misma hora baja", dueAt: due, urgency: "Baja" }, lawyer);
+        const high = await request(`/cases/${legalCase.id}/deadlines`, "POST", { deadlineType: "OTHER", title: "Misma hora alta", dueAt: due, urgency: "Alta" }, lawyer);
+        const overdue = await request(`/cases/${legalCase.id}/deadlines`, "POST", { deadlineType: "OTHER", title: "Plazo vencido", dueAt: inHours(-24) }, lawyer);
+        const ids = (await pending()).json.map((item) => item.id);
+        assert.ok(ids.indexOf(high.json.id) < ids.indexOf(low.json.id));
+        assert.ok(ids.includes(overdue.json.id));
+        assert.ok(ids.indexOf(overdue.json.id) < ids.indexOf(high.json.id));
+      });
+    });
+
+    describe("Crear clientes al importar causas (CU-03 con CU-01, mockup 08)", () => {
+      const headers = ["Correo cliente*", "Nombre cliente", "Teléfono cliente", "Carátula*", "RIT", "Materia*", "Tribunal*", "Prioridad*"];
+      const mapping = { clientEmail: 0, clientName: 1, clientPhone: 2, title: 3, rit: 4, matter: 5, court: 6, priority: 7 };
+      // Abogado propio: la carga de Excel admite 10 archivos por minuto por usuario y la suite ya usa parte de ese cupo.
+      const importLawyerId = randomUUID();
+      let importer;
+      before(async () => {
+        await db.query("INSERT INTO users (id,name,email,password_hash,role) VALUES ($1,'Abogado que importa','importa@example.test','x','LAWYER')", [importLawyerId]);
+        importer = await sessionFor(importLawyerId);
+      });
+      const upload = async (rows) => {
+        const uploaded = await uploadRequest("/case-imports", await workbookBuffer(headers, rows), importer);
+        assert.equal(uploaded.status, 201, JSON.stringify(uploaded.json));
+        return uploaded.json;
+      };
+      const validate = async (batch) => (await request(`/case-imports/${batch.id}/validate`, "POST", { mapping }, importer)).json;
+      it("caso feliz: crea una sola cuenta por correo nuevo y le asigna sus causas", async () => {
+        const email = `nuevo-${randomBytes(4).toString("hex")}@example.test`;
+        const batch = await upload([
+          [email, "Fernanda Castillo Muñoz", "+56 9 1111 2222", "Despido injustificado", "O-100-2026", "Laboral", "Juzgado de Letras del Trabajo", "Alta"],
+          [email, "Fernanda Castillo Muñoz", null, "Cobro de prestaciones", "O-101-2026", "Laboral", "Juzgado de Letras del Trabajo", "Media"],
+        ]);
+        assert.equal(batch.suggestedMapping.clientName, 1);
+        assert.equal(batch.suggestedMapping.clientPhone, 2);
+        const preview = await validate(batch);
+        assert.deepEqual(preview.summary, { total: 2, valid: 2, duplicates: 0, errors: 0, newClients: 1, linkedClients: 0 });
+        assert.match(preview.rows[0].detail, /Se creará la cuenta del cliente/);
+        const confirmed = await request(`/case-imports/${batch.id}/confirm`, "POST", undefined, importer);
+        assert.equal(confirmed.status, 201, JSON.stringify(confirmed.json));
+        assert.equal(confirmed.json.imported, 2);
+        assert.equal(confirmed.json.newClients.length, 1);
+        assert.equal(confirmed.json.newClients[0].email, email);
+        assert.match(confirmed.json.newClients[0].temporaryPassword, /^Lex-/);
+        assert.equal(confirmed.json.newClients[0].deliveryStatus, "PENDING");
+        const account = (await db.query("SELECT id,role,must_change_password,phone FROM users WHERE email=$1", [email])).rows;
+        assert.equal(account.length, 1);
+        assert.equal(account[0].role, "CLIENT");
+        assert.equal(account[0].must_change_password, true);
+        assert.equal(account[0].phone, "+56 9 1111 2222");
+        assert.equal(Number((await db.query("SELECT count(*) FROM cases WHERE client_id=$1 AND lawyer_id=$2", [account[0].id, importLawyerId])).rows[0].count), 2);
+      });
+      it("caso triste: un cliente nuevo sin nombre, el correo de un abogado o un cliente inactivo son errores", async () => {
+        const inactive = randomUUID();
+        await db.query("INSERT INTO users (id,name,email,password_hash,role,lawyer_id,active) VALUES ($1,'Cliente inactivo','inactivo-import@example.test','x','CLIENT',$2,false)", [inactive, otherId]);
+        const batch = await upload([
+          ["sin-nombre@example.test", null, null, "Causa sin nombre de cliente", null, "Civil", "Juzgado Civil", "Media"],
+          ["otro@example.test", "Otro abogado", null, "Causa con correo de abogado", null, "Civil", "Juzgado Civil", "Media"],
+          ["inactivo-import@example.test", "Cliente inactivo", null, "Causa de cliente inactivo", null, "Civil", "Juzgado Civil", "Media"],
+        ]);
+        const preview = await validate(batch);
+        assert.equal(preview.summary.errors, 3);
+        assert.match(preview.rows[0].detail, /Cliente nuevo: indica su nombre/);
+        assert.match(preview.rows[1].detail, /no es un cliente activo/);
+        assert.match(preview.rows[2].detail, /no es un cliente activo/);
+        assert.equal((await db.query("SELECT 1 FROM users WHERE email='sin-nombre@example.test'")).rowCount, 0);
+      });
+      it("caso borde: la plantilla descargable reconoce todas sus columnas, incluidas nombre y teléfono del cliente", async () => {
+        const { readFile } = await import("node:fs/promises");
+        const template = await readFile(new URL("../../frontend/public/plantilla-importacion-causas-v3.xlsx", import.meta.url));
+        const uploaded = await uploadRequest("/case-imports", template, importer, "plantilla-importacion-causas-v3.xlsx");
+        assert.equal(uploaded.status, 201, JSON.stringify(uploaded.json));
+        assert.deepEqual(uploaded.json.suggestedMapping, {
+          clientEmail: 0, clientName: 1, clientPhone: 2, title: 3, rit: 4, matter: 5, court: 6, priority: 7,
+          nextDate: 8, nextDateLabel: 9, internalNotes: 10,
+        });
+      });
+      it("caso borde: un cliente de otro abogado se asocia sin duplicar su cuenta", async () => {
+        const shared = randomUUID();
+        const email = `compartido-${randomBytes(4).toString("hex")}@example.test`;
+        await db.query("INSERT INTO users (id,name,email,password_hash,role,lawyer_id) VALUES ($1,'Cliente de otra cartera',$2,'x','CLIENT',$3)", [shared, email, otherId]);
+        const batch = await upload([[email.toUpperCase(), "Nombre distinto en la planilla", null, "Causa con cliente compartido", null, "Familia", "Juzgado de Familia", "Baja"]]);
+        const preview = await validate(batch);
+        assert.deepEqual(preview.summary, { total: 1, valid: 1, duplicates: 0, errors: 0, newClients: 0, linkedClients: 1 });
+        assert.equal(preview.rows[0].data.clientName, "Cliente de otra cartera");
+        const confirmed = await request(`/case-imports/${batch.id}/confirm`, "POST", undefined, importer);
+        assert.equal(confirmed.json.linkedClients, 1);
+        assert.deepEqual(confirmed.json.newClients, []);
+        assert.equal((await db.query("SELECT count(*) FROM users WHERE email=$1", [email])).rows[0].count, "1");
+        assert.equal(Number((await db.query("SELECT count(*) FROM lawyer_client_assignments WHERE client_id=$1 AND ended_at IS NULL", [shared])).rows[0].count), 2);
       });
     });
   });

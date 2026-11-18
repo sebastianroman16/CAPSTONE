@@ -5,6 +5,7 @@ import { CaseImportService } from "../../core/case-import.service";
 import { errorMessage } from "../../core/auth.service";
 import {
   ImportBatch,
+  ImportedClient,
   ImportField,
   ImportPreviewRow,
   ImportValidation,
@@ -31,8 +32,13 @@ export class ImportCases {
   readonly dragging = signal(false);
   readonly imported = signal<number | null>(null);
   readonly omitted = signal(0);
+  /** Cuentas creadas al confirmar (CU-01). Sus claves temporales solo se muestran en esta pantalla. */
+  readonly newClients = signal<ImportedClient[]>([]);
+  readonly linkedClients = signal(0);
   readonly fields: FieldOption[] = [
     { value: "clientEmail", label: "Correo del cliente", required: true },
+    { value: "clientName", label: "Nombre del cliente (si es nuevo)", required: false },
+    { value: "clientPhone", label: "Teléfono del cliente", required: false },
     { value: "title", label: "Carátula", required: true },
     { value: "rit", label: "RIT", required: false },
     { value: "matter", label: "Materia", required: true },
@@ -160,6 +166,8 @@ export class ImportCases {
       next: (result) => {
         this.imported.set(result.imported);
         this.omitted.set(result.omitted);
+        this.newClients.set(result.newClients ?? []);
+        this.linkedClients.set(result.linkedClients ?? 0);
         this.busy.set(false);
       },
       error: (error) => {
@@ -197,6 +205,23 @@ export class ImportCases {
     anchor.download = "errores-importacion-causas.csv";
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  clientActionLabel(row: ImportPreviewRow) {
+    if (row.status !== "VALID") return "";
+    return row.data.clientAction === "CREATE"
+      ? "Cliente nuevo"
+      : row.data.clientAction === "LINK"
+        ? "Se asocia a tu cartera"
+        : "";
+  }
+
+  deliveryLabel(client: ImportedClient) {
+    return client.deliveryStatus === "DELIVERED"
+      ? "Credenciales enviadas"
+      : client.deliveryStatus === "FAILED"
+        ? "El envío falló: entrégala tú"
+        : "Entrégala tú al cliente";
   }
 
   statusLabel(row: ImportPreviewRow) {

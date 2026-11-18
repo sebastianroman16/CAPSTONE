@@ -1,6 +1,6 @@
 import { inject, Injectable } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
-import { AppNotification, CaseDocument, Communication, Deadline, DocumentRequest, IngestionItem, IngestionReview, User } from "./models";
+import { AppNotification, CaseDocument, Communication, CommunicationCategory, Deadline, DocumentRequest, IngestionItem, IngestionReview, PendingItem, ProfileSummary, TimelineEvent, User } from "./models";
 @Injectable({providedIn:"root"})
 export class ProductService{
   private http=inject(HttpClient);
@@ -8,7 +8,10 @@ export class ProductService{
   addDeadline(caseId:string,data:object){return this.http.post<Deadline>(`/api/cases/${caseId}/deadlines`,data);}
   deadlineStatus(id:string,status:string){return this.http.patch(`/api/deadlines/${id}`,{status});}
   communications(caseId:string){return this.http.get<Communication[]>(`/api/cases/${caseId}/communications`);}
-  sendCommunication(caseId:string,message:string,channel:string){return this.http.post<Communication>(`/api/cases/${caseId}/communications`,{message,channel});}
+  sendCommunication(caseId:string,message:string,channel:string,category:CommunicationCategory="STATUS_UPDATE"){return this.http.post<Communication>(`/api/cases/${caseId}/communications`,{message,channel,category});}
+  timeline(caseId:string){return this.http.get<TimelineEvent[]>(`/api/cases/${caseId}/timeline`);}
+  pending(){return this.http.get<PendingItem[]>("/api/pending");}
+  profileSummary(){return this.http.get<ProfileSummary>("/api/users/me/summary");}
   documents(caseId:string){return this.http.get<CaseDocument[]>(`/api/cases/${caseId}/documents`);}
   uploadDocument(caseId:string,file:File,meta:{title:string;description:string;category:string;visibility:string;requestId?:string}){const f=new FormData();f.append("file",file);Object.entries(meta).forEach(([k,v])=>{if(v!==undefined)f.append(k,v);});return this.http.post(`/api/cases/${caseId}/documents`,f);}
   requests(){return this.http.get<DocumentRequest[]>("/api/document-requests");}

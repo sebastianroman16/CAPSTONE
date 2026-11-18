@@ -39,6 +39,8 @@ export class DeadlineStatusDto {
 export class CommunicationDto {
   @Transform(trim) @IsString() @MinLength(3) @MaxLength(2000) message!: string;
   @IsIn(["IN_APP", "EMAIL", "WHATSAPP"]) channel!: string;
+  /** Tipo de mensaje del mockup 07: actualización de estado, recordatorio de audiencia o solicitud de información. */
+  @IsOptional() @IsIn(["STATUS_UPDATE", "HEARING_REMINDER", "INFO_REQUEST"]) category?: string;
 }
 export class DocumentRequestDto {
   @IsUUID() assignedTo!: string;

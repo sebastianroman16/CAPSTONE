@@ -139,10 +139,65 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
 
   async communications(caseId: string, user: SessionUser) {
     await this.caseAccess(caseId, user);
+    // HU-15 (mockup 07): cuando el cliente abre su causa, los mensajes de su abogado quedan como vistos.
+    if (user.role === "CLIENT")
+      await this.db.query(
+        `UPDATE case_communications SET read_at=now() WHERE case_id=$1 AND read_at IS NULL AND author_id<>$2`,
+        [caseId, user.id],
+      );
     return (await this.db.query(
-      `SELECT m.id,m.message,m.channel,m.delivery_status AS "deliveryStatus",m.created_at AS "createdAt",u.name AS "authorName"
+      `SELECT m.id,m.message,m.channel,m.category,m.delivery_status AS "deliveryStatus",m.read_at AS "readAt",
+       m.created_at AS "createdAt",u.name AS "authorName"
        FROM case_communications m JOIN users u ON u.id=m.author_id
        WHERE m.case_id=$1 ORDER BY m.created_at DESC`, [caseId],
+    )).rows;
+  }
+  /**
+   * HU-21 (mockup 13): línea de tiempo de la causa con el ingreso a LEX-CORPUS, los movimientos
+   * que el abogado ya confirmó y los cambios de estado. Nunca incluye sugerencias sin revisar.
+   */
+  async timeline(caseId: string, user: SessionUser) {
+    await this.caseAccess(caseId, user);
+    return (await this.db.query(
+      `SELECT kind,title,detail,court,to_char(event_date,'YYYY-MM-DD') AS "date",recorded_at AS "recordedAt" FROM (
+         SELECT 'CASE_CREATED' AS kind,'Causa ingresada a LEX-CORPUS' AS title,
+           'Tu causa fue registrada por tu abogado con la referencia interna '||c.reference||'.' AS detail,
+           NULL::varchar AS court,(c.created_at AT TIME ZONE 'America/Santiago')::date AS event_date,c.created_at AS recorded_at
+         FROM cases c WHERE c.id=$1
+         UNION ALL
+         SELECT 'MOVEMENT',
+           CASE i.movement_type WHEN 'AUDIENCIA' THEN 'Audiencia' WHEN 'RESOLUCIÓN' THEN 'Resolución del tribunal'
+             WHEN 'SENTENCIA' THEN 'Sentencia' WHEN 'NOTIFICACIÓN' THEN 'Notificación del tribunal' ELSE 'Movimiento de la causa' END,
+           COALESCE(i.corrected_summary,i.suggested_summary),i.detected_court,
+           COALESCE(i.detected_date,(i.reviewed_at AT TIME ZONE 'America/Santiago')::date),i.reviewed_at
+         FROM ingestion_items i WHERE i.case_id=$1 AND i.status='CONFIRMED'
+         UNION ALL
+         SELECT 'STATUS',CASE h.to_status WHEN 'Archivada' THEN 'Causa archivada' ELSE 'Causa reactivada' END,
+           CASE h.to_status WHEN 'Archivada' THEN 'Tu abogado archivó la causa en LEX-CORPUS.'
+             ELSE 'Tu abogado reactivó la causa en LEX-CORPUS.' END,
+           NULL,(h.changed_at AT TIME ZONE 'America/Santiago')::date,h.changed_at
+         FROM case_status_history h WHERE h.case_id=$1 AND h.from_status IS NOT NULL AND h.from_status<>h.to_status
+       ) t ORDER BY event_date DESC,recorded_at DESC`, [caseId],
+    )).rows;
+  }
+  /**
+   * HU-13 (mockup 09): plazos sin realizar y solicitudes de documentos por vencer del abogado,
+   * para agruparlos en Hoy, Esta semana y Todos. Incluye los vencidos.
+   */
+  async pending(user: SessionUser) {
+    this.lawyer(user);
+    return (await this.db.query(
+      `SELECT * FROM (
+         SELECT 'DEADLINE' AS kind,d.id,d.case_id AS "caseId",c.reference,c.title AS "caseTitle",u.name AS "clientName",
+           d.deadline_type AS "deadlineType",d.title,d.due_at AS "dueAt",d.urgency
+         FROM case_deadlines d JOIN cases c ON c.id=d.case_id JOIN users u ON u.id=c.client_id
+         WHERE c.lawyer_id=$1 AND c.status<>'Archivada' AND d.status='PENDING'
+         UNION ALL
+         SELECT 'DOCUMENT_REQUEST',r.id,r.case_id,c.reference,c.title,u.name,NULL,'Vence solicitud: '||r.title,r.due_at,NULL
+         FROM document_requests r JOIN cases c ON c.id=r.case_id JOIN users u ON u.id=c.client_id
+         WHERE c.lawyer_id=$1 AND c.status<>'Archivada' AND r.status IN ('PENDING','IN_REVIEW') AND r.due_at IS NOT NULL
+       ) p ORDER BY "dueAt",CASE urgency WHEN 'Alta' THEN 0 WHEN 'Media' THEN 1 WHEN 'Baja' THEN 2 ELSE 3 END
+       LIMIT 500`, [user.id],
     )).rows;
   }
   async sendCommunication(caseId: string, dto: CommunicationDto, user: SessionUser) {
@@ -152,9 +207,9 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
       ? { ok: true as boolean, error: undefined as string | undefined }
       : await this.deliver(dto.channel, client, dto.message);
     const comm = (await this.db.query(
-      `INSERT INTO case_communications(case_id,author_id,message,channel,delivery_status,delivery_error)
-       VALUES($1,$2,$3,$4,$5,$6) RETURNING id,message,channel,delivery_status AS "deliveryStatus",created_at AS "createdAt"`,
-      [caseId,user.id,dto.message,dto.channel,delivery.ok?"DELIVERED":"FAILED",delivery.error||null],
+      `INSERT INTO case_communications(case_id,author_id,message,channel,delivery_status,delivery_error,category)
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,message,channel,category,delivery_status AS "deliveryStatus",read_at AS "readAt",created_at AS "createdAt"`,
+      [caseId,user.id,dto.message,dto.channel,delivery.ok?"DELIVERED":"FAILED",delivery.error||null,dto.category||"STATUS_UPDATE"],
     )).rows[0];
     await this.db.query(
       `INSERT INTO notifications(user_id,case_id,notification_type,title,body,channel,delivery_status,delivered_at,delivery_error)

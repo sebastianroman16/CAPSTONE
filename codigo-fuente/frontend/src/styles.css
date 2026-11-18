@@ -1287,3 +1287,50 @@ hr {
     display: block;
   }
 }
+
+/* Pestañas (pendientes y detalle de causa). */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  cursor: pointer;
+}
+.tab.active {
+  border-bottom-color: var(--burgundy);
+  color: var(--burgundy);
+  font-weight: 600;
+}
+.tab .count {
+  margin-left: 0.3rem;
+  font-size: 0.8em;
+  color: var(--ink-soft);
+}
+
+/* Perfil: información de la corporación (mockup 04). */
+.corporation-card {
+  margin-bottom: 1rem;
+}
+.plain-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.plain-list li + li {
+  margin-top: 0.5rem;
+}
+.read-status {
+  color: var(--ink-soft);
+}
+.read-status.seen {
+  color: var(--olive);
+}

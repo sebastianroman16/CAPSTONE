@@ -125,6 +125,8 @@ export type CreatedCase = LegalCase & { onboarding?: CaseOnboarding };
 
 export type ImportField =
   | "clientEmail"
+  | "clientName"
+  | "clientPhone"
   | "title"
   | "rit"
   | "matter"
@@ -151,6 +153,9 @@ export interface ImportPreviewRow {
   data: {
     clientEmail: string;
     clientName?: string;
+    clientPhone?: string;
+    /** EXISTING: de tu cartera · LINK: de otra cartera, se asocia · CREATE: se crea la cuenta. */
+    clientAction?: "EXISTING" | "LINK" | "CREATE";
     title: string;
     rit: string;
     matter: string;
@@ -161,12 +166,26 @@ export interface ImportPreviewRow {
     internalNotes: string;
   };
 }
+/** Cuenta creada al importar (CU-01): la clave temporal se muestra una sola vez al abogado. */
+export interface ImportedClient { name: string; email: string; temporaryPassword: string; deliveryStatus: "DELIVERED" | "PENDING" | "FAILED"; }
 export interface ImportValidation {
-  summary: { total: number; valid: number; errors: number; duplicates: number };
+  summary: { total: number; valid: number; errors: number; duplicates: number; newClients: number; linkedClients: number };
   rows: ImportPreviewRow[];
 }
 export interface Deadline { id:string;caseId:string;reference:string;caseTitle:string;deadlineType:string;title:string;description:string|null;dueAt:string;reminderAt:string|null;urgency:"Alta"|"Media"|"Baja";status:string; }
-export interface Communication { id:string;message:string;channel:string;deliveryStatus:string;createdAt:string;authorName:string; }
+export type CommunicationCategory = "STATUS_UPDATE" | "HEARING_REMINDER" | "INFO_REQUEST";
+export interface Communication { id:string;message:string;channel:string;category:CommunicationCategory;deliveryStatus:string;readAt:string|null;createdAt:string;authorName:string; }
+export const COMMUNICATION_CATEGORIES: Record<CommunicationCategory, string> = {
+  STATUS_UPDATE: "Actualización de estado",
+  HEARING_REMINDER: "Recordatorio de audiencia",
+  INFO_REQUEST: "Solicitud de información",
+};
+/** Hito de la línea de tiempo de la causa (HU-21). */
+export interface TimelineEvent { kind:"CASE_CREATED"|"MOVEMENT"|"STATUS";title:string;detail:string;court:string|null;date:string;recordedAt:string; }
+/** Pendiente del abogado: plazo sin realizar o solicitud de documento por vencer (HU-13). */
+export interface PendingItem { kind:"DEADLINE"|"DOCUMENT_REQUEST";id:string;caseId:string;reference:string;caseTitle:string;clientName:string;deadlineType:string|null;title:string;dueAt:string;urgency:"Alta"|"Media"|"Baja"|null; }
+/** Datos de la corporación y de la cuenta en el perfil (HU-05). */
+export interface ProfileSummary { corporation:string;office:string|null;memberSince:string;activeCases:number;lawyers:Array<{name:string;email:string;phone:string|null}>; }
 export interface CaseDocument { id:string;title:string;description:string|null;category:string;visibility:string;versionId:string;version:number;originalName:string;mimeType:string;sizeBytes:number;uploadedBy:string;createdAt:string; }
 export interface DocumentRequest { id:string;caseId:string;reference:string;title:string;description:string|null;dueAt:string|null;status:string;createdAt:string; }
 export interface AppNotification { id:string;caseId:string|null;type:string;title:string;body:string;channel:string;deliveryStatus:string;readAt:string|null;createdAt:string; }

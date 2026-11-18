@@ -9,11 +9,15 @@ import ExcelJS from "exceljs";
 import { basename, extname } from "node:path";
 import { SessionUser } from "../auth/auth.service";
 import { DatabaseService } from "../database/database.service";
+import { createTemporaryPassword, hashPassword } from "../auth/password";
+import { deliverClientCredentials } from "./client-credentials";
 
 const MAX_ROWS = 500;
 const MAX_COLUMNS = 30;
 const fields = [
   "clientEmail",
+  "clientName",
+  "clientPhone",
   "title",
   "rit",
   "matter",
@@ -27,6 +31,8 @@ type ImportField = (typeof fields)[number];
 type Mapping = Record<ImportField, number | null>;
 type RawRow = Array<string | number | null>;
 type Query = (text: string, values?: unknown[]) => Promise<any>;
+/** EXISTING: cliente de la cartera · LINK: cliente de otro abogado que se asocia · CREATE: cuenta nueva (CU-01). */
+type ClientAction = "EXISTING" | "LINK" | "CREATE";
 
 const requiredFields: ImportField[] = [
   "clientEmail",
@@ -38,6 +44,8 @@ const requiredFields: ImportField[] = [
 
 const aliases: Record<ImportField, string[]> = {
   clientEmail: ["correo cliente", "email cliente", "cliente correo", "correo", "email"],
+  clientName: ["nombre cliente", "nombre del cliente", "cliente nombre", "cliente"],
+  clientPhone: ["telefono cliente", "telefono del cliente", "telefono", "celular"],
   title: ["caratula", "titulo", "causa", "nombre causa"],
   rit: ["rit", "rit causa"],
   matter: ["materia", "tipo", "tipo causa"],
@@ -235,14 +243,42 @@ export class CaseImportService {
         user.id,
         (text, values) => connection.query(text, values),
       );
-      for (const row of validation.rows.filter((item) => item.status === "VALID")) {
+      const validRows = validation.rows.filter((item) => item.status === "VALID");
+      // CU-03 con CU-01: los clientes nuevos se crean una sola vez por correo y los de otra cartera se asocian.
+      const newClients: Array<{ name: string; email: string; temporaryPassword: string; deliveryStatus?: string }> = [];
+      const clientIds = new Map<string, string>();
+      let linkedClients = 0;
+      for (const row of validRows) {
+        const email = row.data.clientEmail;
+        if (row.data.clientAction === "EXISTING" || clientIds.has(email)) continue;
+        if (row.data.clientAction === "LINK") {
+          await connection.query(
+            `INSERT INTO lawyer_client_assignments(lawyer_id,client_id,assigned_by,reason)
+             VALUES($1,$2,$1,'Cliente existente asociado al importar causas')
+             ON CONFLICT (lawyer_id,client_id) WHERE ended_at IS NULL DO NOTHING`,
+            [user.id, row.data.clientId],
+          );
+          clientIds.set(email, row.data.clientId);
+          linkedClients++;
+          continue;
+        }
+        const temporaryPassword = createTemporaryPassword();
+        const inserted = await connection.query(
+          `INSERT INTO users(name,email,phone,password_hash,role,lawyer_id,must_change_password)
+           VALUES($1,$2,$3,$4,'CLIENT',$5,true) RETURNING id`,
+          [row.data.clientName, email, row.data.clientPhone || null, await hashPassword(temporaryPassword), user.id],
+        );
+        clientIds.set(email, inserted.rows[0].id);
+        newClients.push({ name: row.data.clientName, email, temporaryPassword });
+      }
+      for (const row of validRows) {
         await connection.query(
           `INSERT INTO cases
            (lawyer_id,client_id,rit,title,matter,court,priority,next_date,next_date_label,internal_notes)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
           [
             user.id,
-            row.data.clientId,
+            row.data.clientId ?? clientIds.get(row.data.clientEmail),
             row.data.rit || null,
             row.data.title,
             row.data.matter,
@@ -260,13 +296,21 @@ export class CaseImportService {
         [validation.summary.valid, id],
       );
       await connection.query("COMMIT");
+      // Las credenciales se envían después de confirmar, igual que al registrar una causa (HU-02).
+      for (const client of newClients)
+        client.deliveryStatus = await deliverClientCredentials(client.email, client.name, client.temporaryPassword);
       return {
         imported: validation.summary.valid,
         omitted: validation.summary.errors + validation.summary.duplicates,
         summary: validation.summary,
+        newClients,
+        linkedClients,
       };
-    } catch (error) {
+    } catch (error: any) {
       await connection.query("ROLLBACK");
+      // Otro proceso creó la misma cuenta o cambió la cartera durante la confirmación.
+      if (error?.code === "23505" || error?.code === "40001")
+        throw new ConflictException("La cartera cambió mientras se importaba. Vuelve a previsualizar la planilla.");
       throw error;
     } finally {
       connection.release();
@@ -322,6 +366,19 @@ export class CaseImportService {
     const clientByEmail = new Map<string, any>(
       clients.rows.map((client: any) => [client.email.toLowerCase(), client]),
     );
+    const emailColumn = mapping.clientEmail;
+    const outsideEmails = [
+      ...new Set(
+        rows
+          .map((raw) => String((emailColumn === null ? "" : raw[emailColumn]) ?? "").trim().toLowerCase())
+          .filter((email) => email && !clientByEmail.has(email)),
+      ),
+    ];
+    const accounts = outsideEmails.length
+      ? await query(`SELECT id,name,email,role,active FROM users WHERE email = ANY($1::text[])`, [outsideEmails])
+      : { rows: [] };
+    const accountByEmail = new Map<string, any>(accounts.rows.map((account: any) => [account.email, account]));
+    const newClientNames = new Map<string, string>();
     const existing = await query(
       `SELECT id,reference,rit,court FROM cases
        WHERE lawyer_id=$1 AND rit IS NOT NULL`,
@@ -339,6 +396,8 @@ export class CaseImportService {
       const text = (field: ImportField) => String(get(field) ?? "").trim();
       const data: any = {
         clientEmail: text("clientEmail").toLowerCase(),
+        clientName: text("clientName"),
+        clientPhone: text("clientPhone"),
         title: text("title"),
         rit: text("rit"),
         matter: this.canonical(text("matter"), ["Familia", "Laboral", "Civil", "Penal"]),
@@ -350,12 +409,36 @@ export class CaseImportService {
       };
       const errors: string[] = [];
       const client = clientByEmail.get(data.clientEmail);
-      if (!data.clientEmail || !/^\S+@\S+\.\S+$/.test(data.clientEmail))
+      const account = accountByEmail.get(data.clientEmail);
+      let clientDetail = "";
+      if (!data.clientEmail || !/^\S+@\S+\.\S+$/.test(data.clientEmail) || data.clientEmail.length > 254)
         errors.push("Correo del cliente inválido");
-      else if (!client) errors.push("El cliente no pertenece a tu cartera activa");
-      else {
+      else if (client) {
+        data.clientAction = "EXISTING" satisfies ClientAction;
         data.clientId = client.id;
         data.clientName = client.name;
+      } else if (account) {
+        if (account.role !== "CLIENT" || !account.active)
+          errors.push("El correo pertenece a una cuenta que no es un cliente activo");
+        else {
+          // CU-01, curso alterno: cliente de otro abogado; se asocia sin duplicar la cuenta.
+          data.clientAction = "LINK" satisfies ClientAction;
+          data.clientId = account.id;
+          data.clientName = account.name;
+          clientDetail = "Cliente de otra cartera: se asociará a la tuya";
+        }
+      } else {
+        // CU-01: el cliente no tiene cuenta; se creará con una contraseña temporal.
+        const firstName = newClientNames.get(data.clientEmail);
+        if (firstName !== undefined) data.clientName = firstName;
+        if (data.clientName.length < 3 || data.clientName.length > 160)
+          errors.push("Cliente nuevo: indica su nombre (entre 3 y 160 caracteres)");
+        else if (data.clientPhone.length > 30) errors.push("El teléfono del cliente supera 30 caracteres");
+        else {
+          data.clientAction = "CREATE" satisfies ClientAction;
+          clientDetail = "Se creará la cuenta del cliente";
+          if (firstName === undefined) newClientNames.set(data.clientEmail, data.clientName);
+        }
       }
       if (data.title.length < 3 || data.title.length > 200)
         errors.push("La carátula debe tener entre 3 y 200 caracteres");
@@ -370,7 +453,7 @@ export class CaseImportService {
       if (data.nextDate === false) data.nextDate = "";
 
       let status: "VALID" | "ERROR" | "DUPLICATE" = errors.length ? "ERROR" : "VALID";
-      let detail = errors.join(" · ") || "Lista para importar";
+      let detail = errors.join(" · ") || [ "Lista para importar", clientDetail ].filter(Boolean).join(" · ");
       if (!errors.length && data.rit) {
         const key = this.duplicateKey(data.rit, data.court);
         const match = existingKeys.get(key);
@@ -389,6 +472,12 @@ export class CaseImportService {
       valid: validated.filter((row) => row.status === "VALID").length,
       errors: validated.filter((row) => row.status === "ERROR").length,
       duplicates: validated.filter((row) => row.status === "DUPLICATE").length,
+      newClients: new Set(
+        validated.filter((row) => row.status === "VALID" && row.data.clientAction === "CREATE").map((row) => row.data.clientEmail),
+      ).size,
+      linkedClients: new Set(
+        validated.filter((row) => row.status === "VALID" && row.data.clientAction === "LINK").map((row) => row.data.clientEmail),
+      ).size,
     };
     return { summary, rows: validated };
   }
