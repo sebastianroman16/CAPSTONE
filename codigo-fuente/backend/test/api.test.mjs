@@ -2191,6 +2191,73 @@ describe("API real con PostgreSQL y esquema aislado", () => {
       assert.equal(await savedFrom("lote-maximo.xlsx"), 200);
     });
   });
+  describe("Bandeja y detalle de la causa según los mockups 07, 10 y 11", () => {
+    let lawyer, client, other, supervisor, legalCase;
+    before(async () => {
+      lawyer = await sessionFor(lawyerId);
+      client = await sessionFor(clientId);
+      other = await sessionFor(otherId);
+      supervisor = await sessionFor("44444444-4444-4444-8444-444444444444");
+      const created = await request("/cases", "POST", { ...payload, title: "Causa para próximas fechas" }, lawyer);
+      assert.equal(created.status, 201, JSON.stringify(created.json));
+      legalCase = created.json;
+    });
+    const listed = async (id) => (await request("/ingestion", "GET", undefined, lawyer)).json.find((item) => item.id === id);
+    const ingest = (text, extra = {}) => request("/ingestion/text", "POST", { sourceType: "TEXT", sourceName: "Aviso de prueba", text, ...extra }, lawyer);
+
+    describe("bandeja: cliente de la causa y texto original del aviso", () => {
+      it("caso feliz: cada movimiento trae el nombre del cliente y el texto original", async () => {
+        const text = `En causa ${legalCase.reference}, el tribunal cita a audiencia para el 25/12/2026 a las 10:15 horas.`;
+        const item = (await ingest(text, { caseId: legalCase.id })).json;
+        const row = await listed(item.id);
+        const name = (await db.query("SELECT name FROM users WHERE id=$1", [clientId])).rows[0].name;
+        assert.equal(row.clientName, name);
+        assert.equal(row.sourceText, text);
+        assert.equal(row.sourceTruncated, false);
+      });
+      it("caso triste: un movimiento sin causa no trae cliente", async () => {
+        const item = (await ingest("Aviso sin referencia reconocible para ninguna causa del abogado.")).json;
+        const row = await listed(item.id);
+        assert.equal(row.caseId, null);
+        assert.equal(row.clientName, null);
+      });
+      it("caso borde: un texto de más de 5.000 caracteres se recorta en la lista y se marca", async () => {
+        const text = `En causa ${legalCase.reference} se notifica resolución. ` + "x".repeat(6000);
+        const item = (await ingest(text, { caseId: legalCase.id })).json;
+        const row = await listed(item.id);
+        assert.equal(row.sourceText.length, 5000);
+        assert.equal(row.sourceTruncated, true);
+        assert.equal((await db.query("SELECT length(source_text) AS n FROM ingestion_items WHERE id=$1", [item.id])).rows[0].n, text.length);
+      });
+    });
+
+    describe("próximas fechas de la causa", () => {
+      const add = (body) => request(`/cases/${legalCase.id}/deadlines`, "POST", { deadlineType: "HEARING", urgency: "Media", ...body }, lawyer);
+      const inDays = (days) => new Date(Date.now() + days * 86400000).toISOString();
+      it("caso feliz: el abogado ve los plazos pendientes de la causa, del más próximo al más lejano", async () => {
+        const later = await add({ title: "Audiencia de juicio", dueAt: inDays(20) });
+        const sooner = await add({ title: "Audiencia preparatoria", dueAt: inDays(3), urgency: "Alta" });
+        const result = await request(`/cases/${legalCase.id}/deadlines`, "GET", undefined, lawyer);
+        assert.equal(result.status, 200);
+        const ids = result.json.map((item) => item.id);
+        assert.ok(ids.indexOf(sooner.json.id) < ids.indexOf(later.json.id));
+        assert.equal(result.json.find((item) => item.id === sooner.json.id).urgency, "Alta");
+      });
+      it("caso triste: el cliente recibe 403 y otro abogado 404", async () => {
+        assert.equal((await request(`/cases/${legalCase.id}/deadlines`, "GET", undefined, client)).status, 403);
+        assert.equal((await request(`/cases/${legalCase.id}/deadlines`, "GET", undefined, other)).status, 404);
+      });
+      it("caso borde: se excluyen los realizados, se incluyen los vencidos y el coordinador puede verlos", async () => {
+        const done = await add({ title: "Plazo ya realizado", dueAt: inDays(5) });
+        assert.equal((await request(`/deadlines/${done.json.id}`, "PATCH", { status: "COMPLETED" }, lawyer)).status, 200);
+        const overdue = await add({ title: "Plazo vencido", dueAt: inDays(-1) });
+        const ids = (await request(`/cases/${legalCase.id}/deadlines`, "GET", undefined, lawyer)).json.map((item) => item.id);
+        assert.ok(!ids.includes(done.json.id));
+        assert.equal(ids[0], overdue.json.id);
+        assert.equal((await request(`/cases/${legalCase.id}/deadlines`, "GET", undefined, supervisor)).status, 200);
+      });
+    });
+  });
   it("deriva contraseñas con sal única y verifica sin aceptar claves incorrectas", async () => {
     const hash = await hashPassword(password);
     const second = await hashPassword(password);

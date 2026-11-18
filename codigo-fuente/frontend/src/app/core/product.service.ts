@@ -11,6 +11,7 @@ export class ProductService{
   sendCommunication(caseId:string,message:string,channel:string,category:CommunicationCategory="STATUS_UPDATE"){return this.http.post<Communication>(`/api/cases/${caseId}/communications`,{message,channel,category});}
   timeline(caseId:string){return this.http.get<TimelineEvent[]>(`/api/cases/${caseId}/timeline`);}
   pending(){return this.http.get<PendingItem[]>("/api/pending");}
+  caseDeadlines(caseId:string){return this.http.get<Deadline[]>(`/api/cases/${caseId}/deadlines`);}
   profileSummary(){return this.http.get<ProfileSummary>("/api/users/me/summary");}
   documents(caseId:string){return this.http.get<CaseDocument[]>(`/api/cases/${caseId}/documents`);}
   uploadDocument(caseId:string,file:File,meta:{title:string;description:string;category:string;visibility:string;requestId?:string}){const f=new FormData();f.append("file",file);Object.entries(meta).forEach(([k,v])=>{if(v!==undefined)f.append(k,v);});return this.http.post(`/api/cases/${caseId}/documents`,f);}

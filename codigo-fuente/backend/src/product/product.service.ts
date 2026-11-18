@@ -115,6 +115,20 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
        ORDER BY d.due_at`, values,
     )).rows;
   }
+  /**
+   * Mockup 07 (HU-12): próximas fechas de una causa en su detalle. Son plazos internos del abogado,
+   * por eso el cliente no los ve aquí (recibe sus avisos por la línea de tiempo y las notificaciones).
+   */
+  async caseDeadlines(caseId: string, user: SessionUser) {
+    if (user.role === "CLIENT") throw new ForbiddenException("Los plazos internos son visibles solo para el equipo jurídico.");
+    await this.caseAccess(caseId, user);
+    return (await this.db.query(
+      `SELECT d.id,d.case_id AS "caseId",d.deadline_type AS "deadlineType",d.title,d.description,d.due_at AS "dueAt",
+         d.reminder_at AS "reminderAt",d.urgency,d.status
+       FROM case_deadlines d WHERE d.case_id=$1 AND d.status='PENDING' ORDER BY d.due_at`,
+      [caseId],
+    )).rows;
+  }
   async createDeadline(caseId: string, dto: DeadlineDto, user: SessionUser) {
     await this.caseAccess(caseId, user, true);
     if (dto.reminderAt && new Date(dto.reminderAt) > new Date(dto.dueAt))
@@ -345,7 +359,9 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
     return (await this.db.query(`SELECT r.id,r.case_id AS "caseId",c.reference,r.title,r.description,r.due_at AS "dueAt",r.status,r.created_at AS "createdAt" FROM document_requests r JOIN cases c ON c.id=r.case_id WHERE ${clause} ORDER BY r.created_at DESC`,[user.id])).rows;
   }
 
-  private static readonly INGESTION_COLUMNS = `i.id,i.case_id AS "caseId",c.reference AS "caseReference",
+  // El texto original se muestra al revisar (mockup 11); se recorta a 5000 caracteres para no enviar documentos enteros en la lista.
+  private static readonly INGESTION_COLUMNS = `i.id,i.case_id AS "caseId",c.reference AS "caseReference",cu.name AS "clientName",
+    left(i.source_text,5000) AS "sourceText",length(i.source_text)>5000 AS "sourceTruncated",
     i.source_type AS "sourceType",i.source_name AS "sourceName",i.detected_reference AS "detectedReference",
     to_char(i.detected_date,'YYYY-MM-DD') AS "detectedDate",to_char(i.detected_time,'HH24:MI') AS "detectedTime",
     i.detected_court AS "detectedCourt",i.movement_type AS "movementType",i.suggested_summary AS "suggestedSummary",
@@ -356,6 +372,7 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
     this.lawyer(user);
     return (await this.db.query(
       `SELECT ${ProductService.INGESTION_COLUMNS} FROM ingestion_items i LEFT JOIN cases c ON c.id=i.case_id
+       LEFT JOIN users cu ON cu.id=c.client_id
        WHERE i.lawyer_id=$1 ORDER BY i.created_at DESC`,
       [user.id],
     )).rows;

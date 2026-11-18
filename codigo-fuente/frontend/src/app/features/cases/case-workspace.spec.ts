@@ -19,12 +19,17 @@ describe("Registro de fecha clave y recordatorio", () => {
     fixture.detectChanges();
     component = fixture.componentInstance;
     http = TestBed.inject(HttpTestingController);
+    http.expectOne("/api/cases/case-1/deadlines").flush([]);
     http.expectOne("/api/cases/case-1/timeline").flush([]);
     http.expectOne("/api/cases/case-1/communications").flush([]);
     http.expectOne("/api/cases/case-1/documents").flush([]);
     http.expectOne("/api/document-requests").flush([]);
   });
-  afterEach(() => http.verify());
+  // Al agregar un plazo se recarga la lista de próximas fechas de la causa.
+  afterEach(() => {
+    http.match("/api/cases/case-1/deadlines").forEach((request) => request.flush([]));
+    http.verify();
+  });
 
   function fill(at = "2026-12-20T10:00", offset = 86400000) {
     component.deadlineTitle = "Audiencia preparatoria";

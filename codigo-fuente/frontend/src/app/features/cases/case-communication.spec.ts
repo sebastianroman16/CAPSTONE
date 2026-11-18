@@ -26,6 +26,7 @@ describe("Comunicación y línea de tiempo de la causa", () => {
     fixture.componentRef.setInput("isLawyer", isLawyer);
     fixture.detectChanges();
     http = TestBed.inject(HttpTestingController);
+    if (isLawyer) http.expectOne("/api/cases/case-1/deadlines").flush([]);
     http.expectOne("/api/cases/case-1/timeline").flush(timeline);
     http.expectOne("/api/cases/case-1/communications").flush(communications);
     http.expectOne("/api/cases/case-1/documents").flush([]);
@@ -46,6 +47,7 @@ describe("Comunicación y línea de tiempo de la causa", () => {
       expect(request.request.method).toBe("POST");
       expect(request.request.body).toEqual({ message: "Recuerda llevar tus comprobantes.", channel: "IN_APP", category: "HEARING_REMINDER" });
       request.flush(message({ category: "HEARING_REMINDER" }));
+      http.expectOne("/api/cases/case-1/deadlines").flush([]);
       http.expectOne("/api/cases/case-1/timeline").flush([]);
       http.expectOne("/api/cases/case-1/communications").flush([]);
       http.expectOne("/api/cases/case-1/documents").flush([]);

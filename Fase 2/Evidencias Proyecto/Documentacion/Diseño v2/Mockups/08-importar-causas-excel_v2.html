@@ -304,80 +304,59 @@
               </thead>
               <tbody>
                 <tr>
+                  <td>Correo cliente</td>
+                  <td class="col-sample">m.contreras@correo.cl</td>
+                  <td><select><option selected>Correo del cliente <span class="req-star">*</span></option><option>Sin asignar</option></select></td>
+                </tr>
+                <tr>
                   <td>Nombre cliente</td>
                   <td class="col-sample">María Elena Contreras Soto</td>
-                  <td><select><option value="cliente" selected>Cliente <span class="req-star">*</span></option></select></td>
+                  <td><select><option selected>Nombre del cliente (si es nuevo)</option><option>Sin asignar</option></select></td>
+                </tr>
+                <tr>
+                  <td>Teléfono</td>
+                  <td class="col-sample">+56 9 5566 7788</td>
+                  <td><select><option selected>Teléfono del cliente</option><option>Sin asignar</option></select></td>
+                </tr>
+                <tr>
+                  <td>Carátula</td>
+                  <td class="col-sample">Pensión de alimentos</td>
+                  <td><select><option selected>Carátula <span class="req-star">*</span></option><option>Sin asignar</option></select></td>
                 </tr>
                 <tr>
                   <td>RIT causa</td>
                   <td class="col-sample">C-2481-2025</td>
-                  <td>
-                    <select>
-                      <option>Sin asignar</option>
-                      <option selected>RIT</option>
-                      <option>Referencia interna</option>
-                    </select>
-                  </td>
+                  <td><select><option selected>RIT</option><option>Sin asignar</option></select></td>
                 </tr>
                 <tr>
                   <td>Tipo</td>
                   <td class="col-sample">Familia</td>
-                  <td>
-                    <select>
-                      <option>Sin asignar</option>
-                      <option selected>Materia</option>
-                      <option>Tribunal</option>
-                    </select>
-                  </td>
+                  <td><select><option selected>Materia <span class="req-star">*</span></option><option>Sin asignar</option></select></td>
                 </tr>
                 <tr>
                   <td>Juzgado</td>
                   <td class="col-sample">1° Juzgado de Familia...</td>
-                  <td>
-                    <select>
-                      <option>Sin asignar</option>
-                      <option>Materia</option>
-                      <option selected>Tribunal</option>
-                    </select>
-                  </td>
+                  <td><select><option selected>Tribunal <span class="req-star">*</span></option><option>Sin asignar</option></select></td>
                 </tr>
                 <tr>
                   <td>Urgencia</td>
                   <td class="col-sample">Alta</td>
-                  <td>
-                    <select>
-                      <option>Sin asignar</option>
-                      <option selected>Prioridad</option>
-                      <option>Notas</option>
-                    </select>
-                  </td>
+                  <td><select><option selected>Prioridad <span class="req-star">*</span></option><option>Sin asignar</option></select></td>
                 </tr>
                 <tr>
                   <td>Próxima audiencia</td>
                   <td class="col-sample">18-09-2026</td>
-                  <td>
-                    <select>
-                      <option>Sin asignar</option>
-                      <option selected>Próxima fecha clave</option>
-                      <option>Notas</option>
-                    </select>
-                  </td>
+                  <td><select><option selected>Próxima fecha clave</option><option>Sin asignar</option></select></td>
                 </tr>
                 <tr>
                   <td>Observaciones</td>
                   <td class="col-sample">Prioriza por situación...</td>
-                  <td>
-                    <select>
-                      <option>Sin asignar</option>
-                      <option selected>Notas</option>
-                      <option>Materia</option>
-                    </select>
-                  </td>
+                  <td><select><option selected>Notas internas</option><option>Sin asignar</option></select></td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p class="footnote" style="margin-top:14px;"><span class="req-star">*</span> Cliente es el único campo obligatorio: si no existe en tu cartera, se crea automáticamente (CU-01).</p>
+          <p class="footnote" style="margin-top:14px;"><span class="req-star">*</span> Campos obligatorios: correo del cliente, carátula, materia, tribunal y prioridad. Si el correo no corresponde a un cliente de tu cartera, se crea su cuenta con una contraseña temporal (indica su nombre); si es cliente de otro abogado, se asocia a tu cartera sin duplicar su cuenta (CU-01).</p>
         </div>
 
         <div class="actions-row">
@@ -396,8 +375,9 @@
 
           <div class="summary-chips">
             <span class="schip nuevas"><span class="dot"></span>38 causas nuevas</span>
-            <span class="schip actualiza"><span class="dot"></span>3 actualizarán una causa existente</span>
+            <span class="schip actualiza"><span class="dot"></span>3 duplicadas (no se importarán)</span>
             <span class="schip error"><span class="dot"></span>1 con error</span>
+            <span class="schip nuevas"><span class="dot"></span>2 clientes nuevos</span>
           </div>
 
           <div class="preview-scroll">
@@ -412,7 +392,7 @@
                   <td class="mono">C-3391-2026</td>
                   <td>Laboral</td>
                   <td>Alta</td>
-                  <td>Se creará como LC-0244</td>
+                  <td>Lista para importar · Se creará la cuenta del cliente</td>
                 </tr>
                 <tr>
                   <td><span class="row-status nueva">Nueva</span></td>
@@ -420,23 +400,23 @@
                   <td class="mono">C-1287-2026</td>
                   <td>Civil</td>
                   <td>Media</td>
-                  <td>Se creará como LC-0245</td>
+                  <td>Lista para importar</td>
                 </tr>
                 <tr>
-                  <td><span class="row-status actualiza">Actualiza</span></td>
+                  <td><span class="row-status actualiza">Duplicada</span></td>
                   <td>María Elena Contreras Soto</td>
                   <td class="mono">C-2481-2025</td>
                   <td>Familia</td>
                   <td>Alta</td>
-                  <td>Coincide con LC-0142 — se actualizará la fecha clave</td>
+                  <td>Coincide con LC-0142; no se importará</td>
                 </tr>
                 <tr>
-                  <td><span class="row-status actualiza">Actualiza</span></td>
+                  <td><span class="row-status actualiza">Duplicada</span></td>
                   <td>Jorge Salinas Muñoz</td>
                   <td class="mono">C-1097-2025</td>
                   <td>Laboral</td>
                   <td>Media</td>
-                  <td>Coincide con LC-0098 — sin cambios de fondo</td>
+                  <td>Coincide con LC-0098; no se importará</td>
                 </tr>
                 <tr class="is-error">
                   <td><span class="row-status error">Error</span></td>
@@ -444,25 +424,36 @@
                   <td class="mono">C-0456-2026</td>
                   <td>Penal</td>
                   <td>—</td>
-                  <td>Falta el nombre del cliente en la fila 17</td>
+                  <td>Fila 17: correo del cliente inválido</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p class="footnote" style="margin-top:14px;">Mostrando 5 de 42 filas de ejemplo. Las filas con error se omiten de la importación; puedes corregirlas en tu planilla y volver a intentarlo.</p>
+          <p class="footnote" style="margin-top:14px;">Mostrando 5 de 42 filas de ejemplo. Las filas con error o duplicadas se omiten de la importación; puedes descargar el informe de filas omitidas, corregir tu planilla y volver a intentarlo.</p>
         </div>
 
         <div class="actions-row">
           <button class="btn-ghost" id="backStep2Btn">Atrás</button>
           <div class="actions-right">
-            <button class="btn-primary" id="confirmImportBtn">Importar 41 causas</button>
+            <button class="btn-primary" id="confirmImportBtn">Importar 38 causas</button>
           </div>
         </div>
 
         <div class="card success-block" id="successBlock" hidden>
           <div class="success-icon">✓</div>
           <h2>Importación completada</h2>
-          <p>Se agregaron 38 causas nuevas y se actualizaron 3 existentes a tu panel. La fila con error no fue importada.</p>
+          <p>Se agregaron 38 causas a tu panel. Se omitieron 4 filas con errores o duplicadas.</p>
+          <div style="text-align:left; margin:14px 0;">
+            <h3 style="font-size:15px; margin:0 0 4px;">Clientes creados</h3>
+            <p class="section-sub">Cada cliente deberá cambiar su contraseña temporal en su primer ingreso. Guarda esta información ahora: no se volverá a mostrar.</p>
+            <table class="preview-table">
+              <thead><tr><th>Cliente</th><th>Correo</th><th>Contraseña temporal</th><th>Entrega</th></tr></thead>
+              <tbody>
+                <tr><td>Fernanda Castillo Muñoz</td><td>f.castillo@correo.cl</td><td class="mono">Lex-•••••••••!</td><td>Entrégala tú al cliente</td></tr>
+                <tr><td>Ricardo Peña Alarcón</td><td>r.pena@correo.cl</td><td class="mono">Lex-•••••••••!</td><td>Entrégala tú al cliente</td></tr>
+              </tbody>
+            </table>
+          </div>
           <button class="btn-primary" id="goPanelBtn">Ir al panel de causas</button>
         </div>
       </div>
@@ -473,7 +464,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<div class="demo-note">Mockup 08/13 · Importar causas desde Excel · v2 (18-11-2026): solo .xlsx, por seguridad</div>
+<div class="demo-note">Mockup 08/13 · Importar causas desde Excel · v2 (18-11-2026): campos obligatorios y descarte de duplicadas del sistema; solo .xlsx</div>
 
 <script>
   let toastTimer;

@@ -55,7 +55,8 @@ describe("Bandeja de movimientos", () => {
       });
       request.flush({ id: "mov-1", status: "CONFIRMED" });
       http.expectOne("/api/ingestion").flush([item({ status: "CONFIRMED", caseId: "case-1" })]);
-      expect(component.message()).toContain("publicado");
+      expect(component.message()).toContain("visible para el cliente");
+      expect(component.confirmedCaseId()).toBe("case-1");
       expect(component.drafts["mov-1"]).toBeUndefined();
     });
     it("informa cuántos movimientos generó una planilla", () => {

@@ -10,6 +10,7 @@ import { ProductService } from "./product.service";
 export class ProductController {
   constructor(private readonly product:ProductService){}
   @Get("agenda") agenda(@Req() r:AuthRequest,@Query("from")f?:string,@Query("to")t?:string){return this.product.agenda(r.user,f,t);}
+  @Get("cases/:id/deadlines") caseDeadlines(@Param("id",ParseUUIDPipe)id:string,@Req()r:AuthRequest){return this.product.caseDeadlines(id,r.user);}
   @Post("cases/:id/deadlines") deadline(@Param("id",ParseUUIDPipe)id:string,@Body()d:DeadlineDto,@Req()r:AuthRequest){return this.product.createDeadline(id,d,r.user);}
   @Patch("deadlines/:id") deadlineStatus(@Param("id",ParseUUIDPipe)id:string,@Body()d:DeadlineStatusDto,@Req()r:AuthRequest){return this.product.deadlineStatus(id,d.status,r.user);}
   @Get("pending") pending(@Req() r:AuthRequest){return this.product.pending(r.user);}
