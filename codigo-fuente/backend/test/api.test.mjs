@@ -2153,6 +2153,44 @@ describe("API real con PostgreSQL y esquema aislado", () => {
       });
     });
   });
+  describe("Carga de un Excel en la bandeja como una sola operación", () => {
+    const headers = ["Referencia", "Tribunal", "Fecha", "Trámite"];
+    const row = (n, tramite = `Resolución de prueba número ${n}`) => ["LC-1", "1° Juzgado de Familia de Santiago", new Date(Date.UTC(2026, 8, 1 + (n % 28))), tramite];
+    const savedFrom = async (filename) =>
+      Number((await db.query("SELECT count(*) FROM ingestion_items WHERE source_name LIKE $1", [`${filename} · movimiento %`])).rows[0].count);
+    let lawyer;
+    before(async () => { lawyer = await sessionFor(lawyerId); });
+    it("caso feliz: todas las filas quedan en la bandeja", async () => {
+      const uploaded = await uploadRequest("/ingestion/file", await workbookBuffer(headers, [row(1), row(2), row(3)]), lawyer, "lote-completo.xlsx");
+      assert.equal(uploaded.status, 201, JSON.stringify(uploaded.json));
+      assert.equal(uploaded.json.count, 3);
+      assert.equal(await savedFrom("lote-completo.xlsx"), 3);
+    });
+    it("caso triste: si una fila falla al guardarse, no queda ninguna fila de esa planilla", async () => {
+      await db.query(`CREATE FUNCTION lex_test_falla_ingesta() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.source_text LIKE '%FALLA-DE-PRUEBA%' THEN RAISE EXCEPTION 'falla simulada'; END IF; RETURN NEW; END $$`);
+      await db.query("CREATE TRIGGER lex_test_falla_ingesta BEFORE INSERT ON ingestion_items FOR EACH ROW EXECUTE FUNCTION lex_test_falla_ingesta()");
+      try {
+        const uploaded = await uploadRequest("/ingestion/file", await workbookBuffer(headers, [row(1), row(2, "FALLA-DE-PRUEBA en la segunda fila"), row(3)]), lawyer, "lote-fallido.xlsx");
+        assert.equal(uploaded.status, 500);
+        assert.equal(await savedFrom("lote-fallido.xlsx"), 0);
+      } finally {
+        await db.query("DROP TRIGGER lex_test_falla_ingesta ON ingestion_items");
+        await db.query("DROP FUNCTION lex_test_falla_ingesta()");
+      }
+      // Después de la falla, la conexión vuelve al pool en buen estado y la misma planilla se carga completa.
+      const retry = await uploadRequest("/ingestion/file", await workbookBuffer(headers, [row(1), row(2), row(3)]), lawyer, "lote-fallido.xlsx");
+      assert.equal(retry.status, 201, JSON.stringify(retry.json));
+      assert.equal(await savedFrom("lote-fallido.xlsx"), 3);
+    });
+    it("caso borde: la planilla con el máximo de 200 movimientos se guarda completa", async () => {
+      const rows = Array.from({ length: 200 }, (_, index) => row(index + 1));
+      const uploaded = await uploadRequest("/ingestion/file", await workbookBuffer(headers, rows), lawyer, "lote-maximo.xlsx");
+      assert.equal(uploaded.status, 201, JSON.stringify(uploaded.json));
+      assert.equal(uploaded.json.count, 200);
+      assert.equal(await savedFrom("lote-maximo.xlsx"), 200);
+    });
+  });
   it("deriva contraseñas con sal única y verifica sin aceptar claves incorrectas", async () => {
     const hash = await hashPassword(password);
     const second = await hashPassword(password);

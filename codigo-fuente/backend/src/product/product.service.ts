@@ -404,10 +404,24 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
       if(!texts.length)throw new BadRequestException("No fue posible extraer texto legible del archivo.");
       if(texts.length>MAX_EXCEL_MOVEMENTS)throw new BadRequestException(`La planilla supera el máximo de ${MAX_EXCEL_MOVEMENTS} movimientos por carga.`);
       const name=file.originalname.slice(0,200);
-      const items=[];
+      // Se preparan todas las filas antes de escribir (el resumen puede consultar la IA) y se guardan juntas:
+      // si una falla, no queda la planilla a medias en la bandeja.
+      const prepared=[];
       for(const [index,text] of texts.entries())
-        items.push(await this.storeIngestion("EXCEL",`${name} · movimiento ${index+1}`,text,caseId,user));
-      return {count:items.length,items};
+        prepared.push(await this.prepareIngestion("EXCEL",`${name} · movimiento ${index+1}`,text,caseId,user));
+      const client=await this.db.pool.connect();
+      try{
+        await client.query("BEGIN");
+        const items=[];
+        for(const values of prepared)items.push(await this.insertIngestion((text,params)=>client.query(text,params),values));
+        await client.query("COMMIT");
+        return {count:items.length,items};
+      }catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+      }finally{
+        client.release();
+      }
     }
     let text=""; let type="EMAIL";
     if(lowerName.endsWith(".pdf")) {
@@ -445,20 +459,28 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
     )).rows[0]?.id as string|undefined;
   }
   private async storeIngestion(sourceType:string,sourceName:string,text:string,caseId:string|undefined,user:SessionUser,externalMessageId?:string){
+    const values=await this.prepareIngestion(sourceType,sourceName,text,caseId,user,externalMessageId);
+    return this.insertIngestion((sql,params)=>this.db.query(sql,params),values);
+  }
+  /** Extrae los datos, asocia la causa y genera el resumen, sin escribir en la base. */
+  private async prepareIngestion(sourceType:string,sourceName:string,text:string,caseId:string|undefined,user:SessionUser,externalMessageId?:string){
     // En un correo el asunto suele traer el RIT, por eso se analiza junto con el cuerpo.
     const rules=extractMovement(sourceType==="EMAIL"?`${sourceName}\n${text}`:text);
     const linkedCase=caseId??(rules.reference?await this.findCaseByReference(user.id,rules.reference):undefined);
     const summary=await this.summarize(text,rules.movementType,rules.reference,rules.date,rules.time,rules.court);
-    return (await this.db.query(
+    return [user.id,linkedCase||null,sourceType,sourceName,text,rules.reference,rules.date,rules.time,rules.court,
+       rules.movementType,summary.text,summary.source,rules.confidence,rules.formatRecognized,rules.missingFields,
+       externalMessageId||null];
+  }
+  private async insertIngestion(query:(sql:string,params:unknown[])=>Promise<any>,values:unknown[]){
+    return (await query(
       `INSERT INTO ingestion_items(lawyer_id,case_id,source_type,source_name,source_text,detected_reference,detected_date,
          detected_time,detected_court,movement_type,suggested_summary,suggestion_source,confidence,format_recognized,
          missing_fields,external_message_id)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING id,status,case_id AS "caseId",movement_type AS "movementType",suggested_summary AS "suggestedSummary",
          suggestion_source AS "suggestionSource",confidence,format_recognized AS "formatRecognized",missing_fields AS "missingFields"`,
-      [user.id,linkedCase||null,sourceType,sourceName,text,rules.reference,rules.date,rules.time,rules.court,
-       rules.movementType,summary.text,summary.source,rules.confidence,rules.formatRecognized,rules.missingFields,
-       externalMessageId||null],
+      values,
     )).rows[0];
   }
   private async summarize(text:string,movement:string,reference:string|null,date:string|null,time:string|null,court:string|null):Promise<{text:string;source:"IA"|"REGLAS"}>{
