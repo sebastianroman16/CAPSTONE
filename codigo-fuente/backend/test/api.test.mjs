@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { describe, it, before, after } from "node:test";
+import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -21,6 +21,9 @@ const testUrl = url.toString();
 const db = new pg.Client({ connectionString: testUrl });
 const password = randomBytes(18).toString("hex");
 const port = 31379;
+const geminiPort = 31380;
+const geminiCalls = [];
+let geminiReply = null;
 const base = `http://127.0.0.1:${port}/api`;
 let server,
   output = "",
@@ -97,8 +100,19 @@ async function workbookBuffer(headers, rows, formula = false) {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 describe("API real con PostgreSQL y esquema aislado", () => {
+  let geminiStub;
   before(
     async () => {
+      geminiStub = (await import("node:http")).createServer((req, res) => {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          geminiCalls.push({ url: req.url, headers: req.headers, body: JSON.parse(body || "{}") });
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(geminiReply ?? { candidates: [] }));
+        });
+      });
+      await new Promise((resolve) => geminiStub.listen(geminiPort, "127.0.0.1", resolve));
       await admin.connect();
       connected = true;
       await admin.query(`CREATE SCHEMA ${schema}`);
@@ -112,6 +126,9 @@ describe("API real con PostgreSQL y esquema aislado", () => {
         FRONTEND_ORIGIN: "http://localhost:4200",
         INGESTION_WEBHOOK_SECRET: "integration-webhook-secret",
         REMINDER_INTERVAL_MS: "200",
+        // E27: las pruebas nunca llaman a Gemini real; apuntan a un servidor local simulado.
+        GEMINI_API_KEY: "clave-de-prueba-no-real",
+        GEMINI_API_BASE: `http://127.0.0.1:${geminiPort}`,
       };
       execFileSync(process.execPath, ["scripts/migrate.mjs"], { env });
       execFileSync(process.execPath, ["scripts/migrate.mjs"], { env });
@@ -164,6 +181,7 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     { timeout: 30000 },
   );
   after(async () => {
+    await new Promise((resolve) => (geminiStub ? geminiStub.close(resolve) : resolve()));
     if (server && server.exitCode === null) {
       const exited = new Promise((resolve) => server.once("exit", resolve));
       server.kill("SIGTERM");
@@ -1181,6 +1199,48 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.doesNotMatch(answer.json.content,/SECRETO INTERNO|OTRO SECRETO/i);
   });
   // ───────────── Fase 1 sin proveedores externos: P1, P7, P2 y P3 (caso feliz, triste y borde) ─────────────
+  // ───────────── E27: extracción con IA anonimizada y validada (DAS 3.3, 6.4) ─────────────
+  describe("E27 · Gemini: anonimización previa y validación contra el aviso", () => {
+    const aviso = "Juzgado de Familia de Santiago. RIT C-1234-2026. Se fija audiencia preparatoria para el 25 de septiembre de 2026 a las 09:30. Contacto: juan.perez@example.test, celular +56 9 8123 4567.";
+    const reply = (value) => { geminiReply = { candidates: [{ content: { parts: [{ text: typeof value === "string" ? value : JSON.stringify(value) }] } }] }; };
+    const storedOf = async (id) => (await db.query("SELECT detected_date,detected_court,detected_reference,detected_time,suggestion_source FROM ingestion_items WHERE id=$1", [id])).rows[0];
+    const ingest = (text, extra = {}) =>
+      request("/ingestion/text", "POST", { sourceType: "TEXT", sourceName: "Aviso de prueba", text, ...extra }, lawyerCookie);
+    beforeEach(() => { geminiCalls.length = 0; geminiReply = null; });
+    it("caso feliz: envía el texto anonimizado, sin la clave en la URL, y usa la extracción validada", async () => {
+      reply({ summary: "Se fijó una audiencia preparatoria.", movementType: "AUDIENCIA", date: "2026-09-25", time: "09:30", court: "Juzgado de Familia de Santiago", rit: "C-1234-2026" });
+      const result = await ingest(aviso);
+      assert.equal(result.status, 201, JSON.stringify(result.json));
+      assert.equal(geminiCalls.length, 1, "Gemini recibió una sola llamada");
+      const call = geminiCalls[0];
+      assert.doesNotMatch(call.url, /clave-de-prueba/, "la clave no viaja en la URL");
+      assert.equal(call.headers["x-goog-api-key"], "clave-de-prueba-no-real");
+      const sent = JSON.stringify(call.body);
+      assert.doesNotMatch(sent, /juan\.perez@example\.test|8123 4567/, "sin datos personales en el envío");
+      assert.match(sent, /\[correo\]/);
+      const stored = await storedOf(result.json.id);
+      assert.equal(stored.suggestion_source, "IA");
+      assert.equal(stored.detected_court, "Juzgado de Familia de Santiago");
+      assert.equal(stored.detected_reference, "C-1234-2026");
+    });
+    it("caso triste: los datos inventados por la IA no llegan a la base", async () => {
+      reply({ summary: "Resumen general del expediente.", movementType: "SENTENCIA", date: "2031-01-01", court: "Corte Suprema", rit: "Z-9999-2031" });
+      const result = await ingest("Expediente general sin fecha ni tribunal reconocibles.");
+      assert.equal(result.status, 201, JSON.stringify(result.json));
+      const stored = await storedOf(result.json.id);
+      assert.equal(stored.detected_date, null);
+      assert.equal(stored.detected_court, null);
+      assert.equal(stored.detected_reference, null);
+      assert.equal(stored.suggestion_source, "IA", "el resumen de la IA sí se acepta");
+    });
+    it("caso borde: sin JSON válido de Gemini el resumen cae a reglas y la ingesta no falla", async () => {
+      reply("esto no es json");
+      const result = await ingest("Resolución que tiene presente lo informado en el expediente de prueba.");
+      assert.equal(result.status, 201, JSON.stringify(result.json));
+      assert.equal((await storedOf(result.json.id)).suggestion_source, "REGLAS");
+    });
+  });
+
   describe("P1 · Bandeja de movimientos (CU-02, HU-19, HU-20)", () => {
     const seedCase = "33333333-3333-4333-8333-333333333333";
     const ingest = (text, extra = {}) =>
@@ -1811,6 +1871,40 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.ok(audit.json.some(entry=>entry.entityType==="cases"&&entry.entityId===created));
     assert.equal((await request(`/admin/users/${otherId}/status`,"PATCH",{active:false},supervisorCookie)).status,200);
     assert.equal((await request(`/admin/users/${otherId}/status`,"PATCH",{active:true},supervisorCookie)).status,200);
+  });
+  // HU-30: el filtro por tipo solo acepta las entidades que la base audita; cualquier otro valor se rechaza.
+  it("HU-30 · la auditoría muestra la referencia o el correo, nunca el hash ni las notas internas", async () => {
+    const cases = await request("/admin/audit?entityType=cases&limit=100", "GET", undefined, supervisorCookie);
+    assert.equal(cases.status, 200);
+    const withCase = cases.json.find((entry) => entry.entityId === created);
+    assert.ok(withCase, "la causa de la prueba aparece en la auditoría");
+    assert.match(withCase.entityLabel, /^[A-Z]{1,3}-\d+|^LC-\d+$/, "etiqueta legible, no un UUID");
+    const users = await request("/admin/audit?entityType=users&limit=100", "GET", undefined, supervisorCookie);
+    assert.ok(users.json.some((entry) => entry.entityLabel && entry.entityLabel.includes("@")), "usuarios con su correo");
+    const everything = JSON.stringify([...cases.json, ...users.json]);
+    assert.doesNotMatch(everything, /password_hash|\$2[aby]\$|scrypt:|SECRETO INTERNO/, "sin hashes ni notas internas");
+  });
+  it("HU-30 · filtra la auditoría por entidad y rechaza entidades no auditadas", async () => {
+    for (const entity of ["users", "cases", "documents"]) {
+      const filtered = await request(`/admin/audit?entityType=${entity}&limit=50`, "GET", undefined, supervisorCookie);
+      assert.equal(filtered.status, 200, `${entity}: ${JSON.stringify(filtered.json)}`);
+      assert.ok(filtered.json.every((entry) => entry.entityType === entity), `${entity}: solo registros de ese tipo`);
+    }
+    const injected = await request("/admin/audit?entityType=users%20OR%201%3D1&limit=5", "GET", undefined, supervisorCookie);
+    assert.equal(injected.status, 400, "un valor fuera de la lista blanca no llega a SQL");
+    const unaudited = await request("/admin/audit?entityType=ingestion_items&limit=5", "GET", undefined, supervisorCookie);
+    assert.equal(unaudited.status, 400);
+  });
+  // HU-26: el detalle supervisado muestra las reasignaciones y no expone datos de contacto ni notas internas.
+  it("HU-26 · el detalle supervisado incluye reasignaciones sin datos de contacto", async () => {
+    const detail = await request(`/supervision/cases/${created}`, "GET", undefined, supervisorCookie);
+    assert.equal(detail.status, 200, JSON.stringify(detail.json));
+    assert.ok(Array.isArray(detail.json.reassignments), "reassignments es una lista");
+    assert.ok(detail.json.reassignments.length >= 1, "la reasignación de la prueba anterior aparece");
+    const [first] = detail.json.reassignments;
+    assert.deepEqual(Object.keys(first).sort(), ["changedBy", "createdAt", "fromLawyer", "reason", "toLawyer"]);
+    assert.equal(first.changedBy, "Coordinador jurídico de demostración", "quien reasignó aparece por nombre, sin correo");
+    assert.doesNotMatch(JSON.stringify(detail.json), /password|SECRETO INTERNO|@example\.test/);
   });
   // ───────────── P4: cartera por asignaciones activas (E1, E19, CU-01 alterno) ─────────────
   describe("P4 · Cartera de clientes compartida y reasignación", () => {

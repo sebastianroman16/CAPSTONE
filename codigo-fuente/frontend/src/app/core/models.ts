@@ -47,6 +47,8 @@ export function stageLabel(stage?: string) {
     "Sin avance informado"
   );
 }
+// HU-26: reasignación visible para la coordinación (sin datos de contacto).
+export interface CaseReassignment { createdAt: string; reason: string; fromLawyer: string; toLawyer: string; changedBy: string; }
 export interface ProgressEvent {
   id: string;
   stage: string;
@@ -194,4 +196,4 @@ export interface IngestionReview { status:"CONFIRMED"|"REJECTED";summary?:string
 export interface AssistantMessage { id?:number;role:"USER"|"ASSISTANT";content:string;confidence?:number;createdAt?:string; }
 export interface AssistantSession { conversationId:string;messages:AssistantMessage[];quota:{limit:number;used:number;remaining:number}; }
 export interface ManagedUser { id:string;name:string;email:string;phone:string|null;role:string;active:boolean;office:string|null;lastLoginAt:string|null;createdAt:string;caseCount:number; }
-export interface AuditEntry { id:number;entityType:string;entityId:string;action:string;occurredAt:string;actorName:string|null; }
+export interface AuditEntry { id:number;entityType:string;entityId:string;entityLabel:string|null;action:string;occurredAt:string;actorName:string|null; }

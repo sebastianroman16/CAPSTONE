@@ -132,7 +132,7 @@ import { AssistantWidget } from "./assistant-widget";
             <div class="client-account-menu">
               <span>{{ auth.user()?.email }}</span>
               <a routerLink="/perfil">Ver mi perfil</a>
-              <button type="button" (click)="requestLogout()" [disabled]="busy()">
+              <button type="button" class="text-button" (click)="requestLogout()" [disabled]="busy()">
                 {{ busy() ? "Cerrando sesión…" : "Cerrar sesión" }}
               </button>
             </div>

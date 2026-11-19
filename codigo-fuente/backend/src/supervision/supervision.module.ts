@@ -152,9 +152,21 @@ class SupervisionService {
       [id],
     );
     if (!result.rowCount) throw new NotFoundException("Causa no encontrada.");
+    // HU-26: reasignaciones con nombres y motivo; sin datos de contacto ni notas internas.
+    const reassignments = (await this.db.query(
+      `SELECT r.created_at AS "createdAt", r.reason,
+              f.name AS "fromLawyer", t.name AS "toLawyer", c.name AS "changedBy"
+       FROM case_reassignments r
+       JOIN users f ON f.id=r.from_lawyer_id
+       JOIN users t ON t.id=r.to_lawyer_id
+       JOIN users c ON c.id=r.changed_by
+       WHERE r.case_id=$1 ORDER BY r.created_at DESC`,
+      [id],
+    )).rows;
     return {
       ...result.rows[0],
       history: await this.progress.history(id, user),
+      reassignments,
     };
   }
 }

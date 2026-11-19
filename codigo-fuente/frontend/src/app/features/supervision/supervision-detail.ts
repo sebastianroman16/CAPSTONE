@@ -3,7 +3,7 @@ import { DatePipe } from "@angular/common";
 import { ActivatedRoute, RouterLink } from "@angular/router";
 import { SupervisionService } from "../../core/supervision.service";
 import { errorMessage } from "../../core/auth.service";
-import { ProgressEvent, stageLabel, SupervisedCase } from "../../core/models";
+import { CaseReassignment, ProgressEvent, stageLabel, SupervisedCase } from "../../core/models";
 import { ProgressHistory } from "./progress-history";
 import { FormsModule } from "@angular/forms";
 import { AdminService } from "../../core/admin.service";
@@ -99,6 +99,7 @@ import { ManagedUser } from "../../core/models";
         parte de esta vista.
       </p>
       <app-progress-history [events]="c.history" />
+      <section class="card reassignments"><h2>Reasignaciones</h2>@if(c.reassignments.length){<ul class="timeline">@for(r of c.reassignments;track $index){<li><strong>{{r.createdAt|date:'dd/MM/yyyy'}} · {{r.fromLawyer}} → {{r.toLawyer}}</strong><p class="muted">{{r.reason}} · {{r.changedBy}}</p></li>}</ul>}@else{<p class="muted">Esta causa no ha sido reasignada.</p>}</section>
     }`,
 })
 export class SupervisionDetail {
@@ -106,7 +107,7 @@ export class SupervisionDetail {
   private readonly admin=inject(AdminService);
   private readonly id = inject(ActivatedRoute).snapshot.paramMap.get("id")!;
   readonly item = signal<
-    (SupervisedCase & { history: ProgressEvent[] }) | null
+    (SupervisedCase & { history: ProgressEvent[]; reassignments: CaseReassignment[] }) | null
   >(null);
   readonly error = signal("");
   readonly loading = signal(false);

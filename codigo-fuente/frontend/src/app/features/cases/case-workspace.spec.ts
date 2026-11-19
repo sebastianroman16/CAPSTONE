@@ -96,3 +96,71 @@ describe("Registro de fecha clave y recordatorio", () => {
     });
   });
 });
+
+// HU-17: el abogado elige categoría y visibilidad de cada documento; el cliente no puede elegir visibilidad interna.
+describe("Carga de documentos con categoría y visibilidad (HU-17)", () => {
+  let fixture: ComponentFixture<CaseWorkspace>;
+  let component: CaseWorkspace;
+  let http: HttpTestingController;
+
+  function mount(isLawyer: boolean) {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
+    fixture = TestBed.createComponent(CaseWorkspace);
+    fixture.componentRef.setInput("caseId", "case-1");
+    fixture.componentRef.setInput("clientId", "client-1");
+    fixture.componentRef.setInput("isLawyer", isLawyer);
+    fixture.detectChanges();
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+    if (isLawyer) http.expectOne("/api/cases/case-1/deadlines").flush([]);
+    http.expectOne("/api/cases/case-1/timeline").flush([]);
+    http.expectOne("/api/cases/case-1/communications").flush([]);
+    http.expectOne("/api/cases/case-1/documents").flush([]);
+    http.expectOne("/api/document-requests").flush([]);
+  }
+  afterEach(() => http.verify());
+
+  const file = () => new File(["%PDF-1.4 contenido"], "escrito.pdf", { type: "application/pdf" });
+
+  it("caso feliz: el abogado envía la categoría y la visibilidad que eligió", () => {
+    mount(true);
+    component.file = file();
+    component.title = "Demanda";
+    component.documentCategory = "PLEADING";
+    component.documentVisibility = "CLIENT";
+    component.upload();
+    const request = http.expectOne((r) => r.url === "/api/cases/case-1/documents");
+    expect(request.request.body.get("category")).toBe("PLEADING");
+    expect(request.request.body.get("visibility")).toBe("CLIENT");
+    request.flush({ id: "d1" });
+    http.match((r) => r.url.startsWith("/api/cases/case-1/")).forEach((r) => r.flush([]));
+    http.match("/api/document-requests").forEach((r) => r.flush([]));
+  });
+
+  it("caso triste: por defecto el documento queda solo para el equipo jurídico", () => {
+    mount(true);
+    expect(component.documentVisibility).toBe("INTERNAL");
+    expect(component.documentCategory).toBe("OTHER");
+    component.file = file();
+    component.upload();
+    const request = http.expectOne((r) => r.url === "/api/cases/case-1/documents");
+    expect(request.request.body.get("visibility")).toBe("INTERNAL");
+    request.flush({ id: "d2" });
+    http.match((r) => r.url.startsWith("/api/cases/case-1/")).forEach((r) => r.flush([]));
+    http.match("/api/document-requests").forEach((r) => r.flush([]));
+  });
+
+  it("caso borde: el cliente no envía categoría ni visibilidad elegidas y siempre sube como CLIENT", () => {
+    mount(false);
+    component.documentVisibility = "INTERNAL";
+    component.documentCategory = "EVIDENCE";
+    component.file = file();
+    component.upload();
+    const request = http.expectOne((r) => r.url === "/api/cases/case-1/documents");
+    expect(request.request.body.get("visibility")).toBe("CLIENT");
+    expect(request.request.body.get("category")).toBe("OTHER");
+    request.flush({ id: "d3" });
+    http.match((r) => r.url.startsWith("/api/cases/case-1/")).forEach((r) => r.flush([]));
+    http.match("/api/document-requests").forEach((r) => r.flush([]));
+  });
+});

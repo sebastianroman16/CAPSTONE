@@ -29,6 +29,20 @@ export const MOVEMENT_LABELS: Record<string, string> = {
   "NOTIFICACIÓN": "Notificación",
   MOVIMIENTO: "Otro movimiento",
 };
+/** HU-17: categoría de cada documento; los códigos coinciden con DocumentMetadataDto del backend. */
+export const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
+  PLEADING: "Escrito",
+  EVIDENCE: "Prueba",
+  CONTRACT: "Contrato",
+  COURT_RESOLUTION: "Resolución judicial",
+  IDENTITY: "Identificación",
+  OTHER: "Otro",
+};
+/** HU-17: visibilidad elegida por el abogado. El cliente solo sube documentos de su respuesta (el servidor lo fuerza). */
+export const DOCUMENT_VISIBILITY_LABELS: Record<string, string> = {
+  INTERNAL: "Solo equipo jurídico",
+  CLIENT: "Visible para el cliente",
+};
 export const DEADLINE_TYPE_LABELS: Record<string, string> = {
   HEARING: "Audiencia",
   FILING: "Presentación de escrito",

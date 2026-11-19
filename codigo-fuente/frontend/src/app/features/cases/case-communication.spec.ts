@@ -18,7 +18,7 @@ describe("Comunicación y línea de tiempo de la causa", () => {
     date: "2026-08-14", recordedAt: "2026-08-14T15:00:00.000Z", ...overrides,
   });
 
-  function open(isLawyer: boolean, communications: Communication[] = [], timeline: TimelineEvent[] = []) {
+  function open(isLawyer: boolean, communications: Communication[] = [], timeline: TimelineEvent[] = [], tab: "summary" | "communication" | "documents" = "communication") {
     TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
     fixture = TestBed.createComponent(CaseWorkspace);
     fixture.componentRef.setInput("caseId", "case-1");
@@ -31,6 +31,7 @@ describe("Comunicación y línea de tiempo de la causa", () => {
     http.expectOne("/api/cases/case-1/communications").flush(communications);
     http.expectOne("/api/cases/case-1/documents").flush([]);
     http.expectOne("/api/document-requests").flush([]);
+    fixture.componentInstance.activeTab.set(tab);
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   }
@@ -55,7 +56,7 @@ describe("Comunicación y línea de tiempo de la causa", () => {
       expect(component.category).toBe("STATUS_UPDATE");
     });
     it("el abogado ve qué mensajes vio el cliente y el cliente ve su línea de tiempo", () => {
-      const lawyerView = open(true, [message({ readAt: "2026-09-05T23:04:00.000Z" }), message({ id: "m-2" })]);
+      const lawyerView = open(true, [message({ readAt: "2026-09-05T23:04:00.000Z" }), message({ id: "m-2" })], [], "communication");
       expect(lawyerView.textContent).toContain("Visto por el cliente el");
       expect(lawyerView.textContent).toContain("Pendiente de visualización");
     });
@@ -63,19 +64,22 @@ describe("Comunicación y línea de tiempo de la causa", () => {
 
   describe("caso triste", () => {
     it("el cliente no ve el formulario de envío ni el estado de lectura", () => {
-      const clientView = open(false, [message({ readAt: null })], [event({})]);
+      const clientView = open(false, [message({ readAt: null })], [event({})], "communication");
       expect(clientView.querySelector("#communication-category")).toBeNull();
       expect(clientView.textContent).not.toContain("Pendiente de visualización");
-      expect(clientView.textContent).toContain("El tribunal fijó audiencia de conciliación.");
+      TestBed.resetTestingModule();
+
+      const timelineView = open(false, [message({ readAt: null })], [event({})], "summary");
+      expect(timelineView.textContent).toContain("El tribunal fijó audiencia de conciliación.");
     });
     it("sin hitos muestra un mensaje vacío", () => {
-      expect(open(false).textContent).toContain("Sin hitos registrados.");
+      expect(open(false, [], [], "summary").textContent).toContain("Sin hitos registrados.");
     });
   });
 
   describe("caso borde", () => {
     it("un mensaje anterior sin tipo se muestra como actualización de estado", () => {
-      const view = open(true, [{ ...message({}), category: undefined as never }]);
+      const view = open(true, [{ ...message({}), category: undefined as never }], [], "communication");
       expect(view.textContent).toContain("Actualización de estado");
       expect(fixture.componentInstance.categoryOptions.map((option) => option.value)).toEqual(["STATUS_UPDATE", "HEARING_REMINDER", "INFO_REQUEST"]);
     });
@@ -83,7 +87,7 @@ describe("Comunicación y línea de tiempo de la causa", () => {
       const view = open(false, [], [
         event({}),
         event({ kind: "CASE_CREATED", title: "Causa ingresada a LEX-CORPUS", detail: "Tu causa fue registrada.", court: null, date: "2026-07-28" }),
-      ]);
+      ], "summary");
       const items = Array.from(view.querySelectorAll(".timeline")[0].querySelectorAll("li"));
       expect(items.map((item) => item.querySelector("strong")?.textContent?.trim())).toEqual(["14/08/2026 · Audiencia", "28/07/2026 · Causa ingresada a LEX-CORPUS"]);
       expect(items[1].querySelector("small")).toBeNull();

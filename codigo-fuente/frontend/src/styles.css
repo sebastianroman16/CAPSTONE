@@ -177,6 +177,15 @@ textarea {
 .error button {
   margin-left: 12px;
 }
+/* Confirmaciones (guardado, envío, cambio de contraseña): mismo formato que .error, en verde. */
+.success {
+  background: #e6efe1;
+  border: 1px solid #a9c29b;
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  color: #2f4a25;
+}
 .session-backdrop {
   position: fixed;
   inset: 0;

@@ -23,6 +23,8 @@ import {
 } from "./product.dto";
 import { excelCellText, excelRowsToMovements, extractMovement, normalizeReference } from "./ingestion-rules";
 import { documentRejection, ingestionRejection } from "./file-signature";
+import { anonymizeForAi } from "./anonymize";
+import { AiExtraction, mergeAiGaps, parseAiExtraction } from "./ai-extraction";
 
 const STORAGE_ROOT = resolve(
   process.env.DOCUMENT_STORAGE_PATH || join(process.cwd(), ".data", "documents"),
@@ -482,11 +484,15 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
   /** Extrae los datos, asocia la causa y genera el resumen, sin escribir en la base. */
   private async prepareIngestion(sourceType:string,sourceName:string,text:string,caseId:string|undefined,user:SessionUser,externalMessageId?:string){
     // En un correo el asunto suele traer el RIT, por eso se analiza junto con el cuerpo.
-    const rules=extractMovement(sourceType==="EMAIL"?`${sourceName}\n${text}`:text);
-    const linkedCase=caseId??(rules.reference?await this.findCaseByReference(user.id,rules.reference):undefined);
-    const summary=await this.summarize(text,rules.movementType,rules.reference,rules.date,rules.time,rules.court);
-    return [user.id,linkedCase||null,sourceType,sourceName,text,rules.reference,rules.date,rules.time,rules.court,
-       rules.movementType,summary.text,summary.source,rules.confidence,rules.formatRecognized,rules.missingFields,
+    const source=sourceType==="EMAIL"?`${sourceName}\n${text}`:text;
+    const rules=extractMovement(source);
+    const ai=await this.askGemini(text,source);
+    // Las reglas mandan; la IA solo completa datos que el texto original confirma (ai-extraction.ts).
+    const merged=mergeAiGaps(rules,ai);
+    const linkedCase=caseId??(merged.reference?await this.findCaseByReference(user.id,merged.reference):undefined);
+    const summary=ai?{text:ai.summary.slice(0,2000),source:"IA" as const}:this.ruleSummary(text,merged.movementType,merged.reference,merged.date,merged.time,merged.court);
+    return [user.id,linkedCase||null,sourceType,sourceName,text,merged.reference,merged.date,merged.time,merged.court,
+       merged.movementType,summary.text,summary.source,rules.confidence,rules.formatRecognized,merged.missingFields,
        externalMessageId||null];
   }
   private async insertIngestion(query:(sql:string,params:unknown[])=>Promise<any>,values:unknown[]){
@@ -500,10 +506,38 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
       values,
     )).rows[0];
   }
-  private async summarize(text:string,movement:string,reference:string|null,date:string|null,time:string|null,court:string|null):Promise<{text:string;source:"IA"|"REGLAS"}>{
-    if(process.env.GEMINI_API_KEY){try{const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:`Resume para una persona no abogada, sin inventar datos y en máximo 120 palabras:\n${text.slice(0,12000)}`}]}]})});if(res.ok){const data:any=await res.json();const value=data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();if(value)return {text:value.slice(0,2000),source:"IA"};}}catch{}}
+  private ruleSummary(text:string,movement:string,reference:string|null,date:string|null,time:string|null,court:string|null):{text:string;source:"REGLAS"}{
     const readableDate=date?`${date.slice(8,10)}-${date.slice(5,7)}-${date.slice(0,4)}${time?` a las ${time}`:""}`:"";
     return {source:"REGLAS",text:[`Se detectó un movimiento de tipo ${movement.toLowerCase()}.`,reference?`Referencia ${reference}.`:"",readableDate?`Fecha ${readableDate}.`:"",court?`Tribunal: ${court}.`:"",text.replace(/\s+/g," ").slice(0,500)].filter(Boolean).join(" ").slice(0,2000)};
+  }
+  /**
+   * Gemini recibe el texto anonimizado y devuelve JSON. La respuesta se valida contra el texto original:
+   * cualquier fallo, timeout o dato no confirmado devuelve null y se usan solo las reglas (DAS 3.3).
+   */
+  private async askGemini(text:string,source:string):Promise<AiExtraction|null>{
+    const key=process.env.GEMINI_API_KEY;
+    if(!key)return null;
+    const prompt=[
+      "Analiza este aviso judicial. Responde solo JSON con las claves: summary (resumen de máximo 120 palabras para una persona no abogada, sin inventar datos), movementType (AUDIENCIA, RESOLUCIÓN, SENTENCIA, NOTIFICACIÓN o MOVIMIENTO), date (AAAA-MM-DD o vacío), time (HH:MM o vacío), court (tribunal o vacío), rit (RIT o vacío). Usa solo datos presentes en el aviso.",
+      "Aviso:",
+      anonymizeForAi(text).slice(0,12000),
+    ].join("\n");
+    try{
+      const base=process.env.GEMINI_API_BASE||"https://generativelanguage.googleapis.com";
+      const res=await fetch(`${base}/v1beta/models/gemini-2.5-flash:generateContent`,{
+        method:"POST",
+        headers:{"content-type":"application/json","x-goog-api-key":key},
+        body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}}),
+        signal:AbortSignal.timeout(15000),
+      });
+      if(!res.ok)return null;
+      const data:any=await res.json();
+      const raw=data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if(typeof raw!=="string")return null;
+      return parseAiExtraction(raw,source);
+    }catch{
+      return null;
+    }
   }
   /** CU-02: el abogado asocia la causa, corrige los datos sugeridos y recién entonces se publica al cliente. */
   async reviewIngestion(id:string,dto:ReviewIngestionDto,user:SessionUser){
