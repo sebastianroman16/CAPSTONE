@@ -78,3 +78,31 @@ describe("Expiración por inactividad con un borrador", () => {
     expect(navigate).toHaveBeenCalledWith(["/iniciar-sesion"], {});
   });
 });
+
+// Tras cambiar la contraseña en el perfil, el inicio de sesión confirma el cambio y no lo asume.
+describe("Aviso de contraseña actualizada", () => {
+  function mountLogin(params: Record<string, string>) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(params) } } },
+      ],
+    });
+    return TestBed.runInInjectionContext(() => new Login());
+  }
+
+  it("caso feliz: muestra la confirmación cuando llega passwordChanged=true", () => {
+    const component = mountLogin({ passwordChanged: "true" });
+    expect(component.passwordChanged).toBe(true);
+  });
+
+  it("caso triste: sin el parámetro no hay confirmación falsa", () => {
+    const component = mountLogin({});
+    expect(component.passwordChanged).toBe(false);
+  });
+
+  it("caso borde: un valor distinto de 'true' no cuenta como confirmación", () => {
+    const component = mountLogin({ passwordChanged: "1" });
+    expect(component.passwordChanged).toBe(false);
+  });
+});

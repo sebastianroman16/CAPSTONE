@@ -20,6 +20,9 @@
       <p class="muted">
         Ingresa con tu correo y contraseña para revisar tus causas.
       </p>
+      @if (passwordChanged) {
+      <div class="success" role="status">Contraseña actualizada. Inicia sesión con tu nueva contraseña.</div>
+      }
       @if (error()) {
       <div class="error" role="alert">{{ error() }}</div>
       }

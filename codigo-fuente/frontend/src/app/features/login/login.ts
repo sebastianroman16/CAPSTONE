@@ -19,6 +19,8 @@ export class Login {
   readonly showPassword = signal(false);
   readonly busy = signal(false);
   readonly error = signal("");
+  /** Aviso tras cambiar la contraseña en el perfil: el perfil redirige aquí con ?passwordChanged=true. */
+  readonly passwordChanged = inject(ActivatedRoute).snapshot.queryParamMap.get("passwordChanged") === "true";
   readonly form = inject(FormBuilder).nonNullable.group({
     email: ["", [Validators.required, Validators.email]],
     password: ["", Validators.required],
