@@ -1,0 +1,247 @@
+<!doctype html>
+<!-- v2 (18-11-2026): pantalla nueva; documenta una función que el sistema implementa y Fase 1 no describía. -->
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>LEX-CORPUS · Supervisión</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#EFE7D8;
+    --paper-raised:#F8F2E6;
+    --ink:#2E2118;
+    --ink-soft:#6B5A48;
+    --burgundy:#6B1F2A;
+    --burgundy-deep:#4A121C;
+    --gold:#A87C3F;
+    --olive:#6E7A4A;
+    --line:#D9CBAE;
+    --focus:#8C2A36;
+    --sidebar-w:250px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    min-height:100vh;
+  }
+  svg.icon{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto;}
+
+  .shell{display:flex; min-height:100vh;}
+  .sidebar{
+    width:var(--sidebar-w); flex:0 0 auto; background:var(--paper-raised);
+    border-right:1px solid var(--line); display:flex; flex-direction:column;
+    padding:20px 16px; position:sticky; top:0; height:100vh;
+  }
+  .side-brand{font-family:"Libre Caslon Text", Georgia, serif; font-size:19px; letter-spacing:0.02em; color:var(--ink); padding:4px 8px 20px; display:flex; align-items:baseline; gap:8px;}
+  .side-brand .dot{color:var(--burgundy);}
+  .side-role{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); padding:0 8px 14px;}
+  .side-group-label{font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-soft); padding:16px 8px 8px;}
+  .side-link{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:7px;
+    color:var(--ink); text-decoration:none; font-size:14px; font-weight:500; cursor:pointer;
+    border:none; background:none; width:100%; text-align:left; font-family:inherit;
+  }
+  .side-link:hover{background:var(--paper);}
+  .side-link.active{background:var(--burgundy); color:#F5E9DD;}
+  .side-link .badge{margin-left:auto; font-family:"IBM Plex Mono", monospace; font-size:11px; background:var(--gold); color:#3B2A16; padding:1px 6px; border-radius:10px;}
+  .side-link.active .badge{background:#F5E9DD; color:var(--burgundy);}
+  .sidebar-foot{margin-top:auto; border-top:1px solid var(--line); padding-top:14px; display:flex; flex-direction:column; gap:2px;}
+  .sidebar-close{display:none;}
+
+  .main{flex:1; min-width:0; display:flex; flex-direction:column;}
+  .topbar{
+    background:var(--paper-raised); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px clamp(16px,3vw,28px); flex-wrap:wrap; position:sticky; top:0; z-index:5;
+  }
+  .topbar-left{display:flex; align-items:center; gap:12px; min-width:0;}
+  .hamburger{display:none; border:1px solid var(--line); background:var(--paper); border-radius:6px; padding:7px; cursor:pointer; color:var(--ink);}
+  .breadcrumb{font-size:13px; color:var(--ink-soft); white-space:nowrap;}
+  .breadcrumb strong{color:var(--ink); font-weight:600;}
+  .user-chip{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink);}
+  .user-chip .av{width:28px; height:28px; border-radius:50%; background:var(--burgundy); color:#F5E9DD; display:flex; align-items:center; justify-content:center; font-family:"Libre Caslon Text", serif; font-size:12px;}
+
+  .page{padding:clamp(18px,3vw,32px); max-width:980px; width:100%; margin:0 auto;}
+
+  .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;}
+  .page-head h1{font-family:"Libre Caslon Text", Georgia, serif; font-weight:400; font-size:clamp(22px,2.8vw,28px); margin:0 0 4px;}
+  .page-head p{margin:0; color:var(--ink-soft); font-size:14px;}
+
+  .seg-toggle{display:flex; border:1px solid var(--line); border-radius:20px; overflow:hidden; background:var(--paper-raised); flex:0 0 auto;}
+  .seg-toggle button{border:none; background:none; font-family:inherit; font-size:13px; font-weight:600; padding:8px 15px; cursor:pointer; color:var(--ink-soft);}
+  .seg-toggle button.active{background:var(--burgundy); color:#F5E9DD;}
+
+  .group-label{
+    display:flex; align-items:baseline; gap:10px; margin:26px 0 12px;
+  }
+  .group-label:first-of-type{margin-top:0;}
+  .group-label h2{font-family:"Libre Caslon Text", Georgia, serif; font-weight:400; font-size:17px; margin:0;}
+  .group-label .count{font-size:12.5px; color:var(--ink-soft);}
+
+  .pending-list{display:flex; flex-direction:column; gap:10px;}
+  .pending-item{
+    display:flex; align-items:center; gap:14px; background:var(--paper-raised); border:1px solid var(--line);
+    border-radius:9px; padding:13px 16px; cursor:pointer;
+  }
+  .pending-item:hover{border-color:var(--burgundy);}
+  .pending-item.urgent{border-left:3px solid var(--burgundy);}
+
+  .pi-time{
+    width:56px; flex:0 0 auto; text-align:center; font-family:"IBM Plex Mono", monospace;
+  }
+  .pi-time .day{font-size:16px; font-weight:700; line-height:1; color:var(--ink);}
+  .pi-time .mon{font-size:10px; text-transform:uppercase; color:var(--ink-soft);}
+  .pi-time .hr{font-size:11px; color:var(--ink-soft); margin-top:2px;}
+
+  .pi-icon{
+    width:36px; height:36px; border-radius:8px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  }
+  .pi-icon.audiencia{background:#F3E3E1; color:var(--burgundy);}
+  .pi-icon.plazo{background:#F0E2C4; color:#8a6a30;}
+  .pi-icon.recordatorio{background:#E7E1D2; color:var(--ink-soft);}
+  .pi-icon.documento{background:#E4E9DA; color:var(--olive);}
+  .pi-icon.mensaje{background:#E4E9DA; color:var(--olive);}
+
+  .pi-body{flex:1; min-width:0;}
+  .pi-title{font-size:14px; font-weight:600; color:var(--ink);}
+  .pi-sub{font-size:12.5px; color:var(--ink-soft); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .pi-tags{display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;}
+  .tag{font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap;}
+  .tag.mono{font-family:"IBM Plex Mono", monospace; font-weight:500; background:var(--paper); color:var(--ink-soft); border:1px solid var(--line);}
+  .prio{display:inline-flex; align-items:center; gap:5px;}
+  .prio .dot{width:7px; height:7px; border-radius:50%;}
+  .prio.alta .dot{background:var(--burgundy);} .prio.alta{color:var(--burgundy); background:none;}
+  .prio.media .dot{background:var(--gold);} .prio.media{color:#8a6a30; background:none;}
+
+  .pi-action{flex:0 0 auto;}
+  .icon-btn{border:1px solid var(--line); background:var(--paper); border-radius:6px; padding:7px; cursor:pointer; color:var(--ink-soft);}
+  .icon-btn:hover{color:var(--burgundy); border-color:var(--burgundy);}
+
+  .empty-state{
+    text-align:center; padding:34px 20px; color:var(--ink-soft); font-size:13.5px;
+    background:var(--paper-raised); border:1px dashed var(--line); border-radius:9px;
+  }
+
+  .footnote{font-size:12.5px; color:var(--ink-soft); line-height:1.6; margin-top:24px; border-top:1px solid var(--line); padding-top:16px;}
+
+  .toast{
+    position:fixed; left:20px; bottom:20px; background:var(--ink); color:var(--paper);
+    padding:11px 16px; border-radius:7px; font-size:13px; max-width:340px; line-height:1.4;
+    box-shadow:0 6px 18px rgba(0,0,0,0.18);
+    transform:translateY(12px); opacity:0; transition:all .2s ease; pointer-events:none; z-index:20;
+  }
+  .toast.show{transform:translateY(0); opacity:1;}
+
+  .demo-note{
+    position:fixed; bottom:14px; right:14px; background:var(--ink); color:var(--paper);
+    font-size:11.5px; padding:6px 10px; border-radius:5px; opacity:0.75;
+    font-family:"IBM Plex Mono", monospace; z-index:15;
+  }
+
+  @media (max-width:900px){
+    .sidebar{position:fixed; left:0; top:0; z-index:30; transform:translateX(-100%); transition:transform .2s ease;}
+    .sidebar.open{transform:translateX(0); box-shadow:0 0 0 100vmax rgba(46,33,24,0.35);}
+    .hamburger{display:inline-flex;}
+    .sidebar-close{display:inline-flex; margin-left:auto; border:none; background:none; color:var(--ink-soft); font-size:13px; cursor:pointer; padding:4px 8px;}
+  }
+  @media (max-width:520px){
+    .pi-sub{white-space:normal;}
+  }
+</style>
+<style>
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px;}
+  .stat{background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:14px 16px;}
+  .stat .n{font-family:"Libre Caslon Text", serif; font-size:26px; color:var(--burgundy);}
+  .stat .l{font-size:12.5px; color:var(--ink-soft);}
+  .card{background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin-bottom:18px;}
+  .card h2{font-family:"Libre Caslon Text", serif; font-size:19px; margin:0 0 4px;}
+  .card .sub{font-size:13px; color:var(--ink-soft); margin:0 0 14px;}
+  table.data{width:100%; border-collapse:collapse; font-size:13.5px;}
+  table.data th{font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); text-align:left; padding:8px 10px; border-bottom:1px solid var(--line);}
+  table.data td{padding:10px; border-bottom:1px solid #E6DCC7; vertical-align:top;}
+  .mono{font-family:"IBM Plex Mono", monospace; font-size:12.5px;}
+  .muted{color:var(--ink-soft); font-size:12.5px;}
+  .pill{display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; background:#E7DFCC; color:var(--ink);}
+  .pill.alert{background:#F3D9D2; color:var(--burgundy);} .pill.ok{background:#E3E7D5; color:var(--olive);} .pill.off{background:#E5E1DA; color:#7B6F63;}
+  .filters{display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:14px;}
+  .field{display:flex; flex-direction:column; gap:5px; margin-bottom:12px; font-size:13px;}
+  .field label{font-weight:600;}
+  .field input,.field select,.field textarea{font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:#FFFDF8; color:var(--ink);}
+  .field textarea{min-height:90px; resize:vertical;}
+  .btn{font:inherit; font-weight:600; padding:8px 14px; border-radius:7px; border:1px solid var(--line); background:#FFFDF8; color:var(--ink); cursor:pointer;}
+  .btn.primary{background:var(--burgundy); border-color:var(--burgundy); color:#F5E9DD;}
+  .btn.text{border:none; background:none; color:var(--burgundy); padding:4px 6px;}
+  .grid-2{display:grid; grid-template-columns:1.2fr 1fr; gap:18px;} @media (max-width:900px){.grid-2{grid-template-columns:1fr;}}
+  dl.info{display:grid; grid-template-columns:140px 1fr; gap:6px 12px; margin:0; font-size:13.5px;} dl.info dt{color:var(--ink-soft);} dl.info dd{margin:0;}
+  ul.tl{list-style:none; margin:0; padding:0;} ul.tl li{border-left:2px solid var(--line); padding:0 0 14px 14px; position:relative;}
+  ul.tl li::before{content:""; position:absolute; left:-6px; top:4px; width:10px; height:10px; border-radius:50%; background:var(--gold);}
+  .stages{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;} .stages label{border:1px solid var(--line); border-radius:20px; padding:5px 12px; font-size:13px; background:#FFFDF8;}
+  .stages label.on{background:var(--burgundy); color:#F5E9DD; border-color:var(--burgundy);}
+  .notif{background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin-bottom:10px;}
+  .notif.unread{border-left:4px solid var(--burgundy);}
+  .notif h3{font-size:15px; margin:4px 0;} .notif .meta{font-size:12px; color:var(--ink-soft);}
+  .lexi{position:fixed; right:28px; bottom:70px; width:360px; background:#FFFDF8; border:1px solid var(--line); border-radius:14px; box-shadow:0 12px 30px rgba(46,33,24,.18); overflow:hidden;}
+  .lexi-head{background:var(--burgundy); color:#F5E9DD; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;}
+  .lexi-head small{display:block; opacity:.8; font-size:11.5px;}
+  .lexi-body{padding:14px 16px; max-height:330px; overflow:auto; display:flex; flex-direction:column; gap:10px; font-size:13.5px;}
+  .msg{padding:9px 12px; border-radius:10px; max-width:85%;} .msg.bot{background:var(--paper-raised); border:1px solid var(--line);} .msg.me{background:#EADBD7; align-self:flex-end;}
+  .lexi-sugg{display:flex; flex-wrap:wrap; gap:6px;} .lexi-sugg button{font:inherit; font-size:12px; border:1px solid var(--line); background:#FFFDF8; border-radius:20px; padding:4px 10px;}
+  .lexi-foot{border-top:1px solid var(--line); padding:10px 12px; display:flex; gap:8px;} .lexi-foot input{flex:1; font:inherit; padding:7px 10px; border:1px solid var(--line); border-radius:7px;}
+  .lexi-quota{font-size:11.5px; color:var(--ink-soft); padding:0 16px 10px;}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div style="display:flex; align-items:center;"><div class="side-brand">LEX<span class="dot">·</span>CORPUS</div><button class="sidebar-close" id="sidebarClose">Cerrar ✕</button></div>
+    <div class="side-role">Coordinación jurídica</div>
+    <nav>
+      <div class="side-group-label">Equipo jurídico</div>
+      <button class="side-link active"><svg class="icon" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg> Supervisión de causas</button>
+      <button class="side-link"><svg class="icon" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg> Administración y auditoría</button>
+      <button class="side-link"><svg class="icon" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg> Notificaciones</button>
+    </nav>
+    <div class="sidebar-foot"><button class="side-link"><svg class="icon" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg> Mi perfil</button><button class="side-link"><svg class="icon" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg> Cerrar sesión</button></div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-left"><button class="hamburger" id="hamburgerBtn" aria-label="Abrir menú"><svg class="icon" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button><span class="breadcrumb">Equipo jurídico / <strong>Supervisión de causas</strong></span></div>
+      <div class="user-chip"><span class="av">CR</span>Carla Rivas</div>
+    </header>
+    <main class="page">
+      <div class="page-head"><div><p class="muted">Coordinación jurídica · Solo lectura</p><h1>Supervisión de causas</h1><p>Seguimiento del trabajo del equipo sin modificar las causas.</p></div></div>
+      <div class="card"><h2>Resumen general del equipo</h2>
+        <div class="cards"><div class="stat"><div class="n">42</div><div class="l">Todas las causas</div></div><div class="stat"><div class="n">35</div><div class="l">Activas</div></div><div class="stat"><div class="n">7</div><div class="l">Archivadas</div></div><div class="stat"><div class="n">9</div><div class="l">Prioridad alta</div></div><div class="stat"><div class="n">6</div><div class="l">Necesitan revisión</div></div></div>
+        <p class="muted">Una causa necesita revisión si está activa, no está completada y no tiene avances hace más de 14 días.</p></div>
+      <div class="card"><h2>Seguimiento por abogado</h2>
+        <table class="data"><thead><tr><th>Abogado</th><th>Activas</th><th>Prioridad alta</th><th>Necesitan revisión</th><th>Completadas</th></tr></thead><tbody>
+        <tr><td>Emerson Jiménez</td><td>14</td><td>4</td><td><span class="pill alert">3</span></td><td>2</td></tr>
+        <tr><td>María Ibáñez</td><td>12</td><td>3</td><td><span class="pill alert">2</span></td><td>4</td></tr>
+        <tr><td>Natalia Rojas <span class="pill off">Cuenta inactiva</span></td><td>9</td><td>2</td><td><span class="pill alert">1</span></td><td>1</td></tr></tbody></table></div>
+      <div class="card"><h2>Todas las causas</h2>
+        <div class="filters"><div class="field"><label>Buscar</label><input placeholder="Buscar causa, cliente o abogado"></div><div class="field"><label>Abogado</label><select><option>Todos</option><option>Emerson Jiménez</option></select></div><div class="field"><label>Estado</label><select><option>Todas</option><option>Activa</option><option>Archivada</option></select></div><div class="field"><label>Etapa de gestión</label><select><option>Todas</option><option>Evaluación</option><option>Preparación</option><option>En curso</option><option>Seguimiento</option><option>Completada</option></select></div><div class="field"><label><input type="checkbox"> Necesita revisión</label></div><button class="btn text">Limpiar</button></div>
+        <table class="data"><thead><tr><th>Causa y responsable</th><th>Estado</th><th>Etapa y último avance</th><th>Próxima acción</th></tr></thead><tbody>
+        <tr><td><span class="mono">LC-0142</span> · Pensión de alimentos<br><span class="muted">María Elena Contreras · Emerson Jiménez</span></td><td>Activa</td><td>En curso<br><span class="muted">05-09-2026</span></td><td>Preparar audiencia de conciliación</td></tr>
+        <tr><td><span class="mono">LC-0098</span> · Despido injustificado<br><span class="muted">Jorge Salinas · María Ibáñez</span></td><td>Activa <span class="pill alert">Necesita revisión</span></td><td>Preparación<br><span class="muted">12-08-2026</span></td><td>—</td></tr>
+        <tr><td><span class="mono">LC-0061</span> · Cobro de pesos<br><span class="muted">Andrés Reyes · Natalia Rojas</span></td><td>Archivada</td><td>Completada<br><span class="muted">30-07-2026</span></td><td>—</td></tr></tbody></table>
+        <p class="muted" style="margin-top:10px;">Página 1 de 3 · 20 causas por página</p></div>
+      <p class="footnote"><strong>HU-25.</strong> El coordinador ve todas las causas en modo de solo lectura; no puede registrarlas ni editarlas.</p>
+    </main>
+  </div>
+</div>
+
+<div class="demo-note">Mockup 14 · Supervisión de causas (Coordinador) · v2 (18-11-2026): pantalla nueva</div>
+<script>
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('hamburgerBtn').addEventListener('click', () => sidebar.classList.add('open'));
+  document.getElementById('sidebarClose').addEventListener('click', () => sidebar.classList.remove('open'));
+  document.querySelectorAll('[data-toggle-read]').forEach(btn => btn.addEventListener('click', () => { btn.closest('.notif').classList.remove('unread'); btn.remove(); }));
+  document.querySelectorAll('.stages label').forEach(l => l.addEventListener('click', () => { document.querySelectorAll('.stages label').forEach(x => x.classList.toggle('on', x === l)); }));
+</script>
+</body>
+</html>

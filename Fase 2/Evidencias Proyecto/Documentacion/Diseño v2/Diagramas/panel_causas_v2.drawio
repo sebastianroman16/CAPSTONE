@@ -8,7 +8,7 @@
           <mxGeometry height="290" width="150" x="20" y="375" as="geometry" />
         </mxCell>
         <mxCell id="D4loKpHZ95NTxOQJtXkG-99" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
-          <mxGeometry height="480" width="450" x="250" y="300" as="geometry" />
+          <mxGeometry height="746.0" width="450" x="250" y="300" as="geometry" />
         </mxCell>
         <mxCell id="D4loKpHZ95NTxOQJtXkG-100" parent="1" style="ellipse;whiteSpace=wrap;html=1;" value="Archivar causa" vertex="1">
           <mxGeometry height="70" width="140" x="330" y="320" as="geometry" />
@@ -67,7 +67,28 @@
             <mxPoint x="450" y="674" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-      <mxCell id="v2-include-importar" edge="1" parent="1" source="D4loKpHZ95NTxOQJtXkG-110" style="edgeStyle=none;html=1;endArrow=open;verticalAlign=bottom;dashed=1;labelBackgroundColor=none;rounded=0;exitX=0.85;exitY=0.15;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="D4loKpHZ95NTxOQJtXkG-111" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;"><mxGeometry relative="1" as="geometry"/></mxCell></root>
+      <mxCell id="v2-include-importar" edge="1" parent="1" source="D4loKpHZ95NTxOQJtXkG-110" style="edgeStyle=none;html=1;endArrow=open;verticalAlign=bottom;dashed=1;labelBackgroundColor=none;rounded=0;exitX=0.85;exitY=0.15;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="D4loKpHZ95NTxOQJtXkG-111" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="v2d-cu-0" parent="1" style="ellipse;whiteSpace=wrap;html=1;" value="Registrar avance de gestión" vertex="1">
+          <mxGeometry height="70" width="140" x="330" y="774" as="geometry" />
+        </mxCell>
+        <mxCell id="v2d-cu-edge-0" edge="1" parent="1" source="D4loKpHZ95NTxOQJtXkG-98" style="edgeStyle=none;html=1;endArrow=none;verticalAlign=bottom;rounded=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="v2d-cu-0" value="">
+          <mxGeometry relative="1" width="160" as="geometry">
+            </mxGeometry>
+        </mxCell>
+        <mxCell id="v2d-cu-1" parent="1" style="ellipse;whiteSpace=wrap;html=1;" value="Gestionar cartera de clientes" vertex="1">
+          <mxGeometry height="70" width="140" x="330" y="864" as="geometry" />
+        </mxCell>
+        <mxCell id="v2d-cu-edge-1" edge="1" parent="1" source="D4loKpHZ95NTxOQJtXkG-98" style="edgeStyle=none;html=1;endArrow=none;verticalAlign=bottom;rounded=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="v2d-cu-1" value="">
+          <mxGeometry relative="1" width="160" as="geometry">
+            </mxGeometry>
+        </mxCell>
+        <mxCell id="v2d-cu-2" parent="1" style="ellipse;whiteSpace=wrap;html=1;" value="Reactivar causa" vertex="1">
+          <mxGeometry height="70" width="140" x="330" y="954" as="geometry" />
+        </mxCell>
+        <mxCell id="v2d-cu-edge-2" edge="1" parent="1" source="D4loKpHZ95NTxOQJtXkG-98" style="edgeStyle=none;html=1;endArrow=none;verticalAlign=bottom;rounded=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="v2d-cu-2" value="">
+          <mxGeometry relative="1" width="160" as="geometry">
+            </mxGeometry>
+        </mxCell>
+        </root>
     </mxGraphModel>
   </diagram>
 </mxfile>
