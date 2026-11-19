@@ -14,7 +14,7 @@ describe("Detalle de la causa: documentos, solicitudes y próximas fechas", () =
     description: null, dueAt: "2026-09-15T12:00:00.000Z", status: "PENDING", createdAt: "2026-09-05T12:00:00.000Z", ...overrides });
   const deadline = (overrides: Partial<Deadline>): Deadline => ({ id: "p-1", caseId: "case-1", reference: "LC-1", caseTitle: "Causa", deadlineType: "HEARING",
     title: "Audiencia de conciliación", description: null, dueAt: new Date(Date.now() + 8 * 86400000).toISOString(), reminderAt: null, urgency: "Alta", status: "PENDING", ...overrides });
-  const message: Communication = { id: "m-1", message: "Se notificó la demanda.", channel: "EMAIL", category: "STATUS_UPDATE", deliveryStatus: "FAILED", readAt: null,
+  const message: Communication = { id: "m-1", message: "Se notificó la demanda.", channel: "EMAIL", category: "STATUS_UPDATE", deliveryStatus: "FAILED", deliveryError: "El cliente no tiene correo registrado.", readAt: null,
     createdAt: "2026-09-02T12:00:00.000Z", authorName: "María Ibáñez" };
 
   function open(isLawyer: boolean, data: { deadlines?: Deadline[]; documents?: CaseDocument[]; requests?: DocumentRequest[]; communications?: Communication[] } = {}, tab: "summary" | "communication" | "documents" = "summary") {

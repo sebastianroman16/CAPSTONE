@@ -176,7 +176,7 @@ export interface ImportValidation {
 }
 export interface Deadline { id:string;caseId:string;reference:string;caseTitle:string;deadlineType:string;title:string;description:string|null;dueAt:string;reminderAt:string|null;urgency:"Alta"|"Media"|"Baja";status:string; }
 export type CommunicationCategory = "STATUS_UPDATE" | "HEARING_REMINDER" | "INFO_REQUEST";
-export interface Communication { id:string;message:string;channel:string;category:CommunicationCategory;deliveryStatus:string;readAt:string|null;createdAt:string;authorName:string; }
+export interface Communication { id:string;message:string;channel:string;category:CommunicationCategory;deliveryStatus:string;deliveryError:string|null;readAt:string|null;createdAt:string;authorName:string; }
 export const COMMUNICATION_CATEGORIES: Record<CommunicationCategory, string> = {
   STATUS_UPDATE: "Actualización de estado",
   HEARING_REMINDER: "Recordatorio de audiencia",

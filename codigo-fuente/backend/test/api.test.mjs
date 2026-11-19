@@ -1100,6 +1100,21 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.equal(reused.json.onboarding.clientCreated,false);
     assert.equal(Number((await db.query("SELECT count(*) FROM users WHERE email=$1",[email])).rows[0].count),1);
   });
+  // HU-14: un envío por canal externo sin destinatario no puede quedar como entregado, y explica por qué falló.
+  it("HU-14 · WhatsApp a un cliente sin teléfono queda como no entregado con su motivo", async () => {
+    const caseId = "33333333-3333-4333-8333-333333333333";
+    const sinTelefono = randomUUID();
+    await db.query("INSERT INTO users (id,name,email,password_hash,role,lawyer_id,phone) VALUES ($1,'Cliente sin teléfono','sin-telefono@example.test',$2,'CLIENT',$3,NULL)", [sinTelefono, await hashPassword(password), lawyerId]);
+    await db.query("INSERT INTO lawyer_client_assignments(lawyer_id,client_id,assigned_by,reason) VALUES($1,$2,$1,'prueba HU-14') ON CONFLICT DO NOTHING", [lawyerId, sinTelefono]);
+    const caseOwned = await request("/cases", "POST", { ...payload, clientId: sinTelefono, title: "Causa cliente sin teléfono" }, lawyerCookie);
+    assert.equal(caseOwned.status, 201, JSON.stringify(caseOwned.json));
+    const sent = await request(`/cases/${caseOwned.json.id}/communications`, "POST", { message: "Aviso por WhatsApp.", channel: "WHATSAPP", category: "STATUS_UPDATE" }, lawyerCookie);
+    assert.equal(sent.status, 201, JSON.stringify(sent.json));
+    assert.equal(sent.json.deliveryStatus, "FAILED", "sin teléfono no hay entrega");
+    assert.equal(sent.json.deliveryError, "El cliente no tiene teléfono registrado.");
+    const history = await request(`/cases/${caseOwned.json.id}/communications`, "GET", undefined, lawyerCookie);
+    assert.ok(history.json.some((m) => m.id === sent.json.id && m.deliveryStatus === "FAILED" && m.deliveryError), "el historial conserva el motivo");
+  });
   it("gestiona agenda, comunicaciones y notificaciones del cliente", async () => {
     const caseId = "33333333-3333-4333-8333-333333333333";
     const deadline = await request(`/cases/${caseId}/deadlines`, "POST", {

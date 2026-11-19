@@ -162,7 +162,7 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
         [caseId, user.id],
       );
     return (await this.db.query(
-      `SELECT m.id,m.message,m.channel,m.category,m.delivery_status AS "deliveryStatus",m.read_at AS "readAt",
+      `SELECT m.id,m.message,m.channel,m.category,m.delivery_status AS "deliveryStatus",m.delivery_error AS "deliveryError",m.read_at AS "readAt",
        m.created_at AS "createdAt",u.name AS "authorName"
        FROM case_communications m JOIN users u ON u.id=m.author_id
        WHERE m.case_id=$1 ORDER BY m.created_at DESC`, [caseId],
@@ -224,7 +224,7 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
       : await this.deliver(dto.channel, client, dto.message);
     const comm = (await this.db.query(
       `INSERT INTO case_communications(case_id,author_id,message,channel,delivery_status,delivery_error,category)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,message,channel,category,delivery_status AS "deliveryStatus",read_at AS "readAt",created_at AS "createdAt"`,
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,message,channel,category,delivery_status AS "deliveryStatus",delivery_error AS "deliveryError",read_at AS "readAt",created_at AS "createdAt"`,
       [caseId,user.id,dto.message,dto.channel,delivery.ok?"DELIVERED":"FAILED",delivery.error||null,dto.category||"STATUS_UPDATE"],
     )).rows[0];
     await this.db.query(
@@ -235,10 +235,13 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
     return comm;
   }
   private async deliver(channel: string, recipient: any, message: string) {
+    // HU-14: un envío sin destinatario no puede quedar como entregado.
+    const to = channel === "EMAIL" ? recipient?.email : recipient?.phone;
+    if (!to) return { ok: false, error: channel === "EMAIL" ? "El cliente no tiene correo registrado." : "El cliente no tiene teléfono registrado." };
     const url = process.env.NOTIFICATION_WEBHOOK_URL;
     if (!url) return { ok: false, error: "Proveedor externo no configurado; disponible en la bandeja interna." };
     try {
-      const response = await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({channel,to:channel==="EMAIL"?recipient.email:recipient.phone,message})});
+      const response = await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({channel,to,message})});
       return response.ok ? { ok: true } : { ok:false,error:`Proveedor respondió ${response.status}` };
     } catch { return { ok:false,error:"No fue posible contactar al proveedor." }; }
   }

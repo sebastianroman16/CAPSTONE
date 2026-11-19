@@ -10,7 +10,7 @@ describe("Comunicación y línea de tiempo de la causa", () => {
   let fixture: ComponentFixture<CaseWorkspace>;
   let http: HttpTestingController;
   const message = (overrides: Partial<Communication>): Communication => ({
-    id: "m-1", message: "Se fijó audiencia de conciliación.", channel: "IN_APP", category: "STATUS_UPDATE",
+    id: "m-1", message: "Se fijó audiencia de conciliación.", channel: "IN_APP", category: "STATUS_UPDATE", deliveryError: null,
     deliveryStatus: "DELIVERED", readAt: null, createdAt: "2026-09-05T14:20:00.000Z", authorName: "Abogada", ...overrides,
   });
   const event = (overrides: Partial<TimelineEvent>): TimelineEvent => ({
