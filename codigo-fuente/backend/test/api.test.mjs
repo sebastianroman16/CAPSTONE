@@ -1162,6 +1162,35 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.equal((await second.json()).duplicate,true);
     assert.equal(Number((await db.query("SELECT count(*) FROM ingestion_items WHERE external_message_id=$1",[payload.messageId])).rows[0].count),1);
   });
+  it("acepta lo que envía el script de Gmail y le responde lo que necesita para etiquetar el aviso",async()=>{
+    const { createRequire } = await import("node:module");
+    const avisos = createRequire(import.meta.url)("../../integraciones/gmail/lexcorpus-avisos.js");
+    const central = "lexcorpus.avisos@gmail.com";
+    const post = (payload) => fetch(`${base}/webhooks/ingestion/email`,{method:"POST",headers:{"content-type":"application/json","x-ingestion-secret":"integration-webhook-secret"},body:JSON.stringify(payload)});
+    // Reenvío automático de Gmail: el destinatario original es el abogado registrado.
+    const ok = avisos.armarEnvio({
+      reenviadoPor:"abogado@example.test lexcorpus.avisos@gmail.com", para:"Abogado <abogado@example.test>", de:"notificaciones@pjud.cl",
+      asunto:"Notificación causa LC-1", texto:"Se cita a las partes a audiencia preparatoria en la causa LC-1 para el 15 de diciembre de 2026 a las 09:30 horas.",
+      messageId:`<gmail-${randomBytes(4).toString("hex")}@pjud.cl>`,
+    }, central);
+    assert.equal(ok.payload.lawyerEmail,"abogado@example.test");
+    const created = await post(ok.payload);
+    assert.equal(avisos.clasificarRespuesta(created.status, await created.text()).accion,"procesado");
+    const item=(await db.query("SELECT movement_type,detected_date,status FROM ingestion_items WHERE external_message_id=$1",[ok.payload.messageId])).rows[0];
+    assert.equal(item.status,"PENDING");
+    assert.equal(item.movement_type,"AUDIENCIA");
+    // El mismo aviso en la ejecución siguiente no se duplica y sigue contando como procesado.
+    const again = await post(ok.payload);
+    assert.equal(avisos.clasificarRespuesta(again.status, await again.text()).accion,"procesado");
+    // Un destinatario que no es abogado de LEX-CORPUS queda con la etiqueta de error, sin reintentos.
+    const unknown = avisos.armarEnvio({ para:"desconocido@caj.cl", asunto:"Aviso", texto:"Resolución de la causa C-1-2026 con fecha 2026-12-01.", messageId:"<x1@pjud.cl>" }, central);
+    const rejected = await post(unknown.payload);
+    assert.equal(rejected.status,404);
+    assert.equal(avisos.clasificarRespuesta(rejected.status, await rejected.text()).accion,"error");
+    // Un secreto equivocado detiene el script en vez de marcar los avisos.
+    const wrong = await fetch(`${base}/webhooks/ingestion/email`,{method:"POST",headers:{"content-type":"application/json","x-ingestion-secret":"otro"},body:JSON.stringify(ok.payload)});
+    assert.equal(avisos.clasificarRespuesta(wrong.status, await wrong.text()).accion,"detener");
+  });
   it("responde preguntas aproximadas, persiste historial por usuario y descuenta cuota", async () => {
     const initial=await request("/assistant","GET",undefined,lawyerCookie);
     assert.equal(initial.status,200);

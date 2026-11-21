@@ -8,7 +8,8 @@ La implementación se divide en tres componentes independientes:
 codigo-fuente/
 ├── frontend/          Aplicación web Angular 21
 ├── backend/           API REST NestJS 11
-└── infraestructura/   PostgreSQL 17 para desarrollo local
+├── infraestructura/   PostgreSQL 17 para desarrollo local
+└── integraciones/     Script de Gmail que reenvía los avisos del Poder Judicial
 ```
 
 ## Funcionalidades disponibles
@@ -183,3 +184,4 @@ No uses `docker compose down -v` si necesitas conservar la base de datos local.
 - `backend/README.md`: detalles de la API, sesiones, importación y modelo de datos.
 - `frontend/README.md`: ejecución y funcionalidades de la interfaz.
 - `infraestructura/compose.yaml`: servicio PostgreSQL para desarrollo.
+- `integraciones/gmail/README.md`: instalación del reenvío automático de avisos desde un Gmail central al webhook de ingesta.
