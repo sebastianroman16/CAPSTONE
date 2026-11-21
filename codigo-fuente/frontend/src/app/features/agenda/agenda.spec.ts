@@ -40,6 +40,16 @@ describe("Pendientes del abogado", () => {
         overdue: [], today: ["hoy"], week: ["semana"], later: ["despues"],
       });
     });
+    it("la fecha clave de la causa de hoy queda en Hoy aunque ya pasó la medianoche", () => {
+      const midnight = new Date(2026, 8, 10, 0, 0).toISOString();
+      const groups = groupPending([
+        item({ id: "fecha-causa", kind: "CASE_DATE", deadlineType: null, urgency: "Alta", title: "Audiencia preparatoria", dueAt: midnight }),
+      ], now);
+      expect(groups.find((group) => group.key === "today")!.items.map((entry) => entry.id)).toEqual(["fecha-causa"]);
+      expect(groups.find((group) => group.key === "overdue")!.items).toEqual([]);
+      const component = create([]);
+      expect(component.kindLabel(item({ kind: "CASE_DATE" }))).toBe("Fecha clave de la causa");
+    });
     it("la pestaña Hoy es la inicial y cada pestaña muestra solo sus grupos", () => {
       const component = create([item({ id: "a", dueAt: new Date(Date.now() + 60000).toISOString() }), item({ id: "b", dueAt: new Date(Date.now() + 3 * 86400000).toISOString() })]);
       expect(component.tab()).toBe("today");

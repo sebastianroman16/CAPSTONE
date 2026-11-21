@@ -23,6 +23,6 @@ export class ProductService{
   ingestText(data:object){return this.http.post("/api/ingestion/text",data);}
   ingestFile(file:File,caseId?:string){const form=new FormData();form.append("file",file);if(caseId)form.append("caseId",caseId);return this.http.post("/api/ingestion/file",form);}
   review(id:string,data:IngestionReview){return this.http.patch(`/api/ingestion/${id}/review`,data);}
-  createClient(data:{name:string;email:string;phone:string}){return this.http.post<{id:string;name:string;email:string;temporaryPassword:string}>("/api/users/clients",data);}
+  createClient(data:{name:string;email:string;phone:string}){return this.http.post<{id:string;name:string;email:string;temporaryPassword?:string;deliveryStatus:"DELIVERED"|"PENDING"|"FAILED"}>("/api/users/clients",data);}
   updateProfile(data:{name:string;email:string;phone:string}){return this.http.patch<User>("/api/users/me",data);}
 }

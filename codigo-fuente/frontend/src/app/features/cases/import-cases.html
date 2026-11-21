@@ -258,7 +258,7 @@
                   <tr>
                     <td>{{ client.name }}</td>
                     <td>{{ client.email }}</td>
-                    <td class="mono">{{ client.temporaryPassword }}</td>
+                    <td class="mono">{{ client.temporaryPassword || "Enviada por correo" }}</td>
                     <td>{{ deliveryLabel(client) }}</td>
                   </tr>
                 }

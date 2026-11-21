@@ -10,7 +10,7 @@ import { basename, extname } from "node:path";
 import { SessionUser } from "../auth/auth.service";
 import { DatabaseService } from "../database/database.service";
 import { createTemporaryPassword, hashPassword } from "../auth/password";
-import { deliverClientCredentials } from "./client-credentials";
+import { deliverClientCredentials, credentialsForLawyer } from "./client-credentials";
 
 const MAX_ROWS = 500;
 const MAX_COLUMNS = 30;
@@ -245,7 +245,7 @@ export class CaseImportService {
       );
       const validRows = validation.rows.filter((item) => item.status === "VALID");
       // CU-03 con CU-01: los clientes nuevos se crean una sola vez por correo y los de otra cartera se asocian.
-      const newClients: Array<{ name: string; email: string; temporaryPassword: string; deliveryStatus?: string }> = [];
+      const created: Array<{ name: string; email: string; temporaryPassword: string }> = [];
       const clientIds = new Map<string, string>();
       let linkedClients = 0;
       for (const row of validRows) {
@@ -269,7 +269,7 @@ export class CaseImportService {
           [row.data.clientName, email, row.data.clientPhone || null, await hashPassword(temporaryPassword), user.id],
         );
         clientIds.set(email, inserted.rows[0].id);
-        newClients.push({ name: row.data.clientName, email, temporaryPassword });
+        created.push({ name: row.data.clientName, email, temporaryPassword });
       }
       for (const row of validRows) {
         await connection.query(
@@ -297,8 +297,17 @@ export class CaseImportService {
       );
       await connection.query("COMMIT");
       // Las credenciales se envían después de confirmar, igual que al registrar una causa (HU-02).
-      for (const client of newClients)
-        client.deliveryStatus = await deliverClientCredentials(client.email, client.name, client.temporaryPassword);
+      // La clave temporal solo se devuelve si no se pudo enviar por correo.
+      const newClients = [];
+      for (const client of created)
+        newClients.push({
+          name: client.name,
+          email: client.email,
+          ...credentialsForLawyer(
+            client.temporaryPassword,
+            await deliverClientCredentials(client.email, client.name, client.temporaryPassword),
+          ),
+        });
       return {
         imported: validation.summary.valid,
         omitted: validation.summary.errors + validation.summary.duplicates,

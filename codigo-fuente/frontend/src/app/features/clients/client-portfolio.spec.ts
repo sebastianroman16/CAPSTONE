@@ -68,4 +68,25 @@ describe("Cartera de clientes", () => {
     component.query.set("sin coincidencias");
     expect(component.filtered()).toEqual([]);
   });
+  // HU-31: si el correo con las credenciales salió, la clave no se muestra; si no, se muestra una vez.
+  it("muestra la clave temporal solo cuando no se pudo enviar", () => {
+    const flushLoad = () => {
+      http.expectOne("/api/users/clients").flush([]);
+      http.expectOne("/api/cases").flush([]);
+    };
+    flushLoad();
+    component.clientName = "Pedro Soto"; component.clientEmail = "pedro@example.test"; component.clientPhone = "";
+    component.createClient();
+    http.expectOne("/api/users/clients").flush({ id: "c9", name: "Pedro Soto", email: "pedro@example.test", deliveryStatus: "DELIVERED" });
+    flushLoad();
+    expect(component.temporaryPassword()).toBe("");
+    expect(component.credentialsSent()).toContain("pedro@example.test");
+
+    component.clientName = "Ana Rivas"; component.clientEmail = "ana@example.test";
+    component.createClient();
+    http.expectOne("/api/users/clients").flush({ id: "c10", name: "Ana Rivas", email: "ana@example.test", deliveryStatus: "PENDING", temporaryPassword: "Lex-temporal-9" });
+    flushLoad();
+    expect(component.temporaryPassword()).toBe("Lex-temporal-9");
+    expect(component.credentialsSent()).toBe("");
+  });
 });

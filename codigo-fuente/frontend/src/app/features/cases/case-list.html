@@ -216,7 +216,7 @@
     <div class="client-list-heading">
       <div>
         <h2>Tus causas</h2>
-        <span>{{ filtered().length }} {{ filtered().length === 1 ? 'causa' : 'causas' }} {{ status() === 'Activa' ? 'activas' : 'archivadas' }}</span>
+        <span>{{ countLabel(filtered().length) }}</span>
       </div>
     </div>
 

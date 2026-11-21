@@ -24,6 +24,12 @@ export class CaseList {
   readonly matter = signal("");
   readonly priority = signal("");
   readonly status = signal("Activa");
+  /** "1 causa activa", "3 causas activas", "1 causa archivada"… (antes decía "1 causa activas"). */
+  countLabel(count: number): string {
+    const one = count === 1;
+    const state = this.status() === "Activa" ? (one ? "activa" : "activas") : one ? "archivada" : "archivadas";
+    return `${count} ${one ? "causa" : "causas"} ${state}`;
+  }
   readonly sortBy = signal<"priority" | "client" | "matter" | "date">("priority");
   readonly sortDirection = signal<"asc" | "desc">("asc");
   readonly stageLabel = stageLabel;

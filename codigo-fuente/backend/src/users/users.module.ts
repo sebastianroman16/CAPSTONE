@@ -14,6 +14,7 @@ import { AuthModule } from "../auth/auth.module";
 import { AllowTemporaryPassword, AuthGuard, AuthRequest } from "../auth/auth.guard";
 import { ConflictException } from "@nestjs/common";
 import { createTemporaryPassword, hashPassword } from "../auth/password";
+import { credentialsForLawyer, deliverClientCredentials } from "../cases/client-credentials";
 import { CreateClientDto, ProfileDto } from "../product/product.dto";
 @Controller("users")
 @UseGuards(AuthGuard)
@@ -36,7 +37,10 @@ class UsersController {
     if(existing) throw new ConflictException("Ya existe una cuenta con ese correo.");
     const temporaryPassword=createTemporaryPassword(9);
     const client=await this.db.pool.connect();
-    try{await client.query("BEGIN");const row=(await client.query(`INSERT INTO users(name,email,phone,password_hash,role,lawyer_id,must_change_password) VALUES($1,$2,$3,$4,'CLIENT',$5,true) RETURNING id,name,email,phone`,[dto.name,dto.email.toLowerCase(),dto.phone||null,await hashPassword(temporaryPassword),req.user.id])).rows[0];await client.query("COMMIT");return {...row,temporaryPassword};}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+    try{await client.query("BEGIN");const row=(await client.query(`INSERT INTO users(name,email,phone,password_hash,role,lawyer_id,must_change_password) VALUES($1,$2,$3,$4,'CLIENT',$5,true) RETURNING id,name,email,phone`,[dto.name,dto.email.toLowerCase(),dto.phone||null,await hashPassword(temporaryPassword),req.user.id])).rows[0];await client.query("COMMIT");
+      // HU-31: la cuenta creada desde la cartera también recibe sus credenciales por correo.
+      const deliveryStatus=await deliverClientCredentials(row.email,row.name,temporaryPassword);
+      return {...row,...credentialsForLawyer(temporaryPassword,deliveryStatus)};}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
   }
   /**
    * HU-05 (mockup 04): datos de la corporación en el perfil. El sistema atiende a una corporación,

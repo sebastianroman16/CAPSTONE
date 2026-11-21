@@ -2168,6 +2168,22 @@ describe("API real con PostgreSQL y esquema aislado", () => {
         const ids = (await pending()).json.map((item) => item.id);
         for (const id of [done.json.id, noDate.json.id, hidden.json.id]) assert.ok(!ids.includes(id));
       });
+      it("caso feliz: incluye la fecha clave registrada en la causa, sin duplicar una audiencia agendada ese día", async () => {
+        const chileDate = (days) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date(Date.now() + days * 86400000));
+        const withDate = (await request("/cases", "POST", { ...payload, title: "Causa con fecha clave", nextDate: chileDate(4), nextDateLabel: "Audiencia preparatoria", priority: "Alta" }, lawyer)).json;
+        const pastDate = (await request("/cases", "POST", { ...payload, title: "Causa con fecha pasada", nextDate: chileDate(-3), nextDateLabel: "Fecha ya pasada" }, lawyer)).json;
+        let items = (await pending()).json;
+        const caseDate = items.find((item) => item.kind === "CASE_DATE" && item.caseId === withDate.id);
+        assert.ok(caseDate, "la fecha clave de la causa debe aparecer en pendientes");
+        assert.equal(caseDate.title, "Audiencia preparatoria");
+        assert.equal(caseDate.urgency, "Alta");
+        assert.ok(!items.some((item) => item.kind === "CASE_DATE" && item.caseId === pastDate.id));
+        const sameDay = await request(`/cases/${withDate.id}/deadlines`, "POST", { deadlineType: "HEARING", title: "Audiencia agendada", dueAt: `${chileDate(4)}T10:00:00-03:00` }, lawyer);
+        assert.equal(sameDay.status, 201, JSON.stringify(sameDay.json));
+        items = (await pending()).json;
+        assert.ok(!items.some((item) => item.kind === "CASE_DATE" && item.caseId === withDate.id));
+        assert.ok(items.some((item) => item.id === sameDay.json.id));
+      });
       it("caso borde: incluye los vencidos y, a igual fecha, la urgencia alta va primero", async () => {
         const due = inHours(70);
         const low = await request(`/cases/${legalCase.id}/deadlines`, "POST", { deadlineType: "OTHER", title: "Misma hora baja", dueAt: due, urgency: "Baja" }, lawyer);

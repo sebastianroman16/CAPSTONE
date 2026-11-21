@@ -32,7 +32,9 @@ export function groupPending(items: PendingItem[], now = new Date()): AgendaGrou
   for (const item of items) {
     const due = new Date(item.dueAt);
     const day = localDate(0, due);
-    const group = due.getTime() < now.getTime() ? 0 : day === today ? 1 : day <= weekEnd ? 2 : 3;
+    // La fecha clave de la causa no tiene hora: vence al terminar el día, no a medianoche.
+    const overdue = item.kind === "CASE_DATE" ? day < today : due.getTime() < now.getTime();
+    const group = overdue ? 0 : day === today ? 1 : day <= weekEnd ? 2 : 3;
     groups[group].items.push(item);
   }
   for (const group of groups)
@@ -72,7 +74,7 @@ const TAB_GROUPS: Record<AgendaTab, AgendaGroup["key"][]> = {
           <ul class="timeline">
             @for (item of group.items; track item.kind + item.id) {
               <li>
-                <strong>{{ item.dueAt | date: "dd/MM/yyyy HH:mm" }} · {{ item.title }}</strong>
+                <strong>{{ item.dueAt | date: (item.kind === "CASE_DATE" ? "dd/MM/yyyy" : "dd/MM/yyyy HH:mm") }} · {{ item.title }}</strong>
                 <span class="badge">{{ kindLabel(item) }}</span>
                 @if (item.urgency) {<span class="badge" [class.high]="item.urgency === 'Alta'">Urgencia {{ item.urgency.toLowerCase() }}</span>}
                 <p>{{ item.clientName }} · {{ item.reference }} · {{ item.caseTitle }}</p>
@@ -117,6 +119,7 @@ export class Agenda {
   }
   kindLabel(item: PendingItem) {
     if (item.kind === "DOCUMENT_REQUEST") return "Solicitud de documento";
+    if (item.kind === "CASE_DATE") return "Fecha clave de la causa";
     return item.deadlineType === "HEARING" ? "Audiencia" : item.deadlineType === "REMINDER" ? "Recordatorio" : "Plazo";
   }
   complete(item: PendingItem) {

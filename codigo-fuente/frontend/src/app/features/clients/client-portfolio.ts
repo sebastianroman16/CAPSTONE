@@ -29,6 +29,8 @@ export class ClientPortfolio {
   readonly clients = signal<Client[]>([]);
   readonly cases = signal<LegalCase[]>([]);
   readonly temporaryPassword=signal("");
+  /** Aviso cuando las credenciales llegaron por correo y la clave no se muestra. */
+  readonly credentialsSent=signal("");
   clientName="";clientEmail="";clientPhone="";
 
   readonly portfolio = computed<PortfolioClient[]>(() =>
@@ -96,5 +98,5 @@ export class ClientPortfolio {
       },
     });
   }
-  createClient(){this.error.set("");this.product.createClient({name:this.clientName,email:this.clientEmail,phone:this.clientPhone}).subscribe({next:r=>{this.temporaryPassword.set(r.temporaryPassword);this.clientName="";this.clientEmail="";this.clientPhone="";this.load();},error:e=>this.error.set(errorMessage(e))});}
+  createClient(){this.error.set("");this.temporaryPassword.set("");this.credentialsSent.set("");this.product.createClient({name:this.clientName,email:this.clientEmail,phone:this.clientPhone}).subscribe({next:r=>{this.temporaryPassword.set(r.temporaryPassword??"");this.credentialsSent.set(r.temporaryPassword?"":`Se enviaron las credenciales a ${r.email}.`);this.clientName="";this.clientEmail="";this.clientPhone="";this.load();},error:e=>this.error.set(errorMessage(e))});}
 }

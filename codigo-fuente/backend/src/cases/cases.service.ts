@@ -9,7 +9,7 @@ import { DatabaseService } from "../database/database.service";
 import { SessionUser } from "../auth/auth.service";
 import { CreateCaseDto, CaseFieldsDto, UpdateCaseDto } from "./case.dto";
 import { createTemporaryPassword, hashPassword } from "../auth/password";
-import { deliverClientCredentials } from "./client-credentials";
+import { deliverClientCredentials, credentialsForLawyer } from "./client-credentials";
 @Injectable()
 export class CasesService {
   constructor(private readonly db: DatabaseService) {}
@@ -154,7 +154,7 @@ export class CasesService {
 
   private async deliverClientCredentials(email: string, name: string, temporaryPassword: string) {
     const deliveryStatus = await deliverClientCredentials(email, name, temporaryPassword);
-    return { clientCreated: true as const, temporaryPassword, deliveryStatus };
+    return { clientCreated: true as const, ...credentialsForLawyer(temporaryPassword, deliveryStatus) };
   }
 
   private changedElsewhere(): never {

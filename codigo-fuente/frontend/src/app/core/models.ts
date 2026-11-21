@@ -35,11 +35,12 @@ export interface LegalCase {
 }
 export const progressStages = [
   { value: "NOT_REPORTED", label: "Sin avance informado" },
-  { value: "ASSESSMENT", label: "Evaluación inicial" },
+  // Nombres de etapa según HU-27 y el diccionario de datos del DAS v2.
+  { value: "ASSESSMENT", label: "Evaluación" },
   { value: "PREPARATION", label: "Preparación" },
-  { value: "IN_PROGRESS", label: "En tramitación" },
+  { value: "IN_PROGRESS", label: "En curso" },
   { value: "FOLLOW_UP", label: "Seguimiento" },
-  { value: "COMPLETED", label: "Gestión finalizada" },
+  { value: "COMPLETED", label: "Completada" },
 ];
 export function stageLabel(stage?: string) {
   return (
@@ -169,7 +170,8 @@ export interface ImportPreviewRow {
   };
 }
 /** Cuenta creada al importar (CU-01): la clave temporal se muestra una sola vez al abogado. */
-export interface ImportedClient { name: string; email: string; temporaryPassword: string; deliveryStatus: "DELIVERED" | "PENDING" | "FAILED"; }
+/** temporaryPassword solo viene cuando las credenciales no se pudieron enviar por correo. */
+export interface ImportedClient { name: string; email: string; temporaryPassword?: string; deliveryStatus: "DELIVERED" | "PENDING" | "FAILED"; }
 export interface ImportValidation {
   summary: { total: number; valid: number; errors: number; duplicates: number; newClients: number; linkedClients: number };
   rows: ImportPreviewRow[];
@@ -185,7 +187,8 @@ export const COMMUNICATION_CATEGORIES: Record<CommunicationCategory, string> = {
 /** Hito de la línea de tiempo de la causa (HU-21). */
 export interface TimelineEvent { kind:"CASE_CREATED"|"MOVEMENT"|"STATUS";title:string;detail:string;court:string|null;date:string;recordedAt:string; }
 /** Pendiente del abogado: plazo sin realizar o solicitud de documento por vencer (HU-13). */
-export interface PendingItem { kind:"DEADLINE"|"DOCUMENT_REQUEST";id:string;caseId:string;reference:string;caseTitle:string;clientName:string;deadlineType:string|null;title:string;dueAt:string;urgency:"Alta"|"Media"|"Baja"|null; }
+/** CASE_DATE: fecha clave registrada en la causa (HU-06); es de día completo, sin hora. */
+export interface PendingItem { kind:"DEADLINE"|"DOCUMENT_REQUEST"|"CASE_DATE";id:string;caseId:string;reference:string;caseTitle:string;clientName:string;deadlineType:string|null;title:string;dueAt:string;urgency:"Alta"|"Media"|"Baja"|null; }
 /** Datos de la corporación y de la cuenta en el perfil (HU-05). */
 export interface ProfileSummary { corporation:string;office:string|null;memberSince:string;activeCases:number;lawyers:Array<{name:string;email:string;phone:string|null}>; }
 export interface CaseDocument { id:string;title:string;description:string|null;category:string;visibility:string;versionId:string;version:number;originalName:string;mimeType:string;sizeBytes:number;uploadedBy:string;createdAt:string; }

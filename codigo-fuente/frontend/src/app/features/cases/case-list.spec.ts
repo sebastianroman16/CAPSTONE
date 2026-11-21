@@ -92,4 +92,12 @@ describe("Panel de causas", () => {
     component.sortDirection.set("asc");
     expect(component.filtered().map(item=>item.id)).toEqual(["1","2"]);
   });
+  it("escribe el conteo en singular o plural según corresponda", () => {
+    http.expectOne("/api/cases").flush([]);
+    expect(component.countLabel(1)).toBe("1 causa activa");
+    expect(component.countLabel(3)).toBe("3 causas activas");
+    component.status.set("Archivada");
+    expect(component.countLabel(1)).toBe("1 causa archivada");
+    expect(component.countLabel(0)).toBe("0 causas archivadas");
+  });
 });

@@ -4,6 +4,7 @@ import { provideHttpClient, withInterceptors } from "@angular/common/http";
 import { provideRouter, RouterOutlet } from "@angular/router";
 import { routes } from "./app/app.routes";
 import { sessionInterceptor } from "./app/core/auth.service";
+import { appLocaleProviders } from "./app/core/locale";
 @Component({
   selector: "app-root",
   imports: [RouterOutlet],
@@ -12,6 +13,7 @@ import { sessionInterceptor } from "./app/core/auth.service";
 class App {}
 bootstrapApplication(App, {
   providers: [
+    ...appLocaleProviders,
     provideHttpClient(withInterceptors([sessionInterceptor])),
     provideRouter(routes),
   ],

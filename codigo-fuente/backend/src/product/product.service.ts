@@ -212,6 +212,16 @@ export class ProductService implements OnModuleInit, OnModuleDestroy {
          SELECT 'DOCUMENT_REQUEST',r.id,r.case_id,c.reference,c.title,u.name,NULL,'Vence solicitud: '||r.title,r.due_at,NULL
          FROM document_requests r JOIN cases c ON c.id=r.case_id JOIN users u ON u.id=c.client_id
          WHERE c.lawyer_id=$1 AND c.status<>'Archivada' AND r.status IN ('PENDING','IN_REVIEW') AND r.due_at IS NOT NULL
+         UNION ALL
+         -- HU-13: la fecha clave que el abogado registró en la causa (HU-06) también es un pendiente.
+         -- Solo si es hoy o futura y si no hay ya un plazo pendiente ese mismo día (por ejemplo, la audiencia confirmada desde la bandeja).
+         SELECT 'CASE_DATE',c.id,c.id,c.reference,c.title,u.name,NULL,COALESCE(NULLIF(c.next_date_label,''),'Fecha clave de la causa'),
+           c.next_date::timestamp AT TIME ZONE 'America/Santiago',c.priority
+         FROM cases c JOIN users u ON u.id=c.client_id
+         WHERE c.lawyer_id=$1 AND c.status<>'Archivada' AND c.next_date IS NOT NULL
+           AND c.next_date>=(now() AT TIME ZONE 'America/Santiago')::date
+           AND NOT EXISTS (SELECT 1 FROM case_deadlines d WHERE d.case_id=c.id AND d.status='PENDING'
+             AND (d.due_at AT TIME ZONE 'America/Santiago')::date=c.next_date)
        ) p ORDER BY "dueAt",CASE urgency WHEN 'Alta' THEN 0 WHEN 'Media' THEN 1 WHEN 'Baja' THEN 2 ELSE 3 END
        LIMIT 500`, [user.id],
     )).rows;

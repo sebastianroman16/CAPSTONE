@@ -1325,6 +1325,38 @@ hr {
   color: var(--ink-soft);
 }
 
+/* Pestañas Resumen, Comunicación y Documentos del detalle de causa (abogado y cliente).
+   Mismo estilo que las pestañas de pendientes; antes se veían como botones del navegador. */
+.workspace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 1.5rem 0 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-tab {
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.workspace-tab:hover {
+  color: var(--burgundy);
+}
+.workspace-tab.active {
+  border-bottom-color: var(--burgundy);
+  color: var(--burgundy);
+}
+.workspace-tab:focus-visible {
+  outline: 2px solid var(--burgundy);
+  outline-offset: 2px;
+}
+
 /* Perfil: información de la corporación (mockup 04). */
 .corporation-card {
   margin-bottom: 1rem;
@@ -1361,4 +1393,11 @@ hr {
   border-radius: 6px;
   padding: 10px 12px;
   font-size: 0.9em;
+}
+
+/* Lexi queda fijo en la esquina inferior derecha (unos 112 px de alto con su margen).
+   El contenido reserva ese espacio al final para que el personaje nunca tape un botón,
+   por ejemplo "Continuar" al importar desde Excel. */
+main.page {
+  padding-bottom: 150px;
 }

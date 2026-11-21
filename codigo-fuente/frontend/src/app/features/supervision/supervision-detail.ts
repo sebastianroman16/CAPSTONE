@@ -22,7 +22,6 @@ import { ManagedUser } from "../../core/models";
         {{ error() }}
         <button class="text-button" (click)="load()">Reintentar</button>
       </div>
-      <section class="card"><h2>Reasignar responsable</h2><p class="muted">La reasignación queda registrada en el historial y conserva todos los datos de la causa.</p><form (ngSubmit)="reassign()"><div class="field"><label for="new-lawyer">Nuevo abogado</label><select id="new-lawyer" name="newLawyerId" [(ngModel)]="newLawyerId" required><option value="">Selecciona un abogado activo</option>@for(lawyer of lawyers();track lawyer.id){<option [value]="lawyer.id">{{lawyer.name}}</option>}</select></div><div class="field"><label for="reason">Motivo</label><textarea id="reason" name="reason" [(ngModel)]="reason" required minlength="5" maxlength="500"></textarea></div><button class="button" [disabled]="!newLawyerId||reason.trim().length<5">Confirmar reasignación</button></form></section>
     }
     @if (item(); as c) {
       <div class="page-head">
@@ -100,6 +99,7 @@ import { ManagedUser } from "../../core/models";
       </p>
       <app-progress-history [events]="c.history" />
       <section class="card reassignments"><h2>Reasignaciones</h2>@if(c.reassignments.length){<ul class="timeline">@for(r of c.reassignments;track $index){<li><strong>{{r.createdAt|date:'dd/MM/yyyy'}} · {{r.fromLawyer}} → {{r.toLawyer}}</strong><p class="muted">{{r.reason}} · {{r.changedBy}}</p></li>}</ul>}@else{<p class="muted">Esta causa no ha sido reasignada.</p>}</section>
+      <section class="card"><h2>Reasignar responsable</h2><p class="muted">La reasignación queda registrada en el historial y conserva todos los datos de la causa.</p>@if(reassignOptions(c.lawyerId).length){<form (ngSubmit)="reassign()"><div class="field"><label for="new-lawyer">Nuevo abogado</label><select id="new-lawyer" name="newLawyerId" [(ngModel)]="newLawyerId" required><option value="">Selecciona un abogado activo</option>@for(lawyer of reassignOptions(c.lawyerId);track lawyer.id){<option [value]="lawyer.id">{{lawyer.name}}</option>}</select></div><div class="field"><label for="reason">Motivo</label><textarea id="reason" name="reason" [(ngModel)]="reason" required minlength="5" maxlength="500"></textarea><small>Entre 5 y 500 caracteres.</small></div>@if(reassignError()){<p class="validation" role="alert">{{reassignError()}}</p>}<button class="button" [disabled]="reassigning()||!newLawyerId||reason.trim().length<5">{{reassigning()?"Reasignando…":"Confirmar reasignación"}}</button></form>}@else{<p class="muted">No hay otro abogado activo al que reasignar esta causa.</p>}@if(reassignDone()){<p class="success" role="status">{{reassignDone()}}</p>}</section>
     }`,
 })
 export class SupervisionDetail {
@@ -113,6 +113,11 @@ export class SupervisionDetail {
   readonly loading = signal(false);
   readonly stageLabel = stageLabel;
   readonly lawyers=signal<ManagedUser[]>([]);newLawyerId="";reason="";
+  readonly reassigning=signal(false);
+  readonly reassignError=signal("");
+  readonly reassignDone=signal("");
+  /** HU-29: solo abogados activos distintos del responsable actual. */
+  reassignOptions(currentLawyerId:string){return this.lawyers().filter(lawyer=>lawyer.id!==currentLawyerId);}
   constructor() {
     this.load();
     this.admin.users().subscribe({next:users=>this.lawyers.set(users.filter(user=>user.role==="LAWYER"&&user.active)),error:e=>this.error.set(errorMessage(e))});
@@ -132,5 +137,13 @@ export class SupervisionDetail {
       },
     });
   }
-  reassign(){if(!this.newLawyerId||this.reason.trim().length<5)return;this.admin.reassign(this.id,this.newLawyerId,this.reason).subscribe({next:()=>{this.newLawyerId="";this.reason="";this.load();},error:e=>this.error.set(errorMessage(e))});}
+  reassign(){
+    if(!this.newLawyerId||this.reason.trim().length<5||this.reassigning())return;
+    const target=this.lawyers().find(lawyer=>lawyer.id===this.newLawyerId)?.name??"el abogado seleccionado";
+    this.reassigning.set(true);this.reassignError.set("");this.reassignDone.set("");
+    this.admin.reassign(this.id,this.newLawyerId,this.reason.trim()).subscribe({
+      next:()=>{this.newLawyerId="";this.reason="";this.reassigning.set(false);this.reassignDone.set(`La causa quedó a cargo de ${target}.`);this.load();},
+      error:e=>{this.reassigning.set(false);this.reassignError.set(errorMessage(e));},
+    });
+  }
 }

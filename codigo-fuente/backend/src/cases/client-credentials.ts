@@ -1,6 +1,14 @@
 export type CredentialDelivery = "DELIVERED" | "PENDING" | "FAILED";
 
 /**
+ * La clave temporal solo vuelve a la pantalla del abogado si el envío no se completó.
+ * Si el proveedor la entregó por correo, no se expone en la respuesta.
+ */
+export function credentialsForLawyer(temporaryPassword: string, deliveryStatus: CredentialDelivery) {
+  return deliveryStatus === "DELIVERED" ? { deliveryStatus } : { deliveryStatus, temporaryPassword };
+}
+
+/**
  * HU-02: envía las credenciales temporales de un cliente nuevo por el webhook configurado.
  * Sin webhook queda PENDING y el abogado ve la clave temporal en pantalla para entregarla.
  */
