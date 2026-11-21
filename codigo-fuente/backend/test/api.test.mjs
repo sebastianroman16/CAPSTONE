@@ -2375,6 +2375,96 @@ describe("API real con PostgreSQL y esquema aislado", () => {
     assert.equal(await verifyPassword("incorrecta", hash), false);
   });
   // E26 va al final: agota a propósito el cupo por IP del inicio de sesión.
+  // HU-04: recuperación de contraseña. Enlace de 30 minutos, de un solo uso, guardado solo como hash, y sin revelar cuentas.
+  // HU-23: el cliente descarga los documentos que el abogado dejó disponibles, con su contenido exacto y sin acceder a lo interno.
+  describe("HU-23 · Descarga de documentos", () => {
+    const seedCase = "33333333-3333-4333-8333-333333333333";
+    const contenido = "Documento de prueba HU-23 " + randomBytes(4).toString("hex");
+    let visible, interno, clienteAjeno;
+    before(async () => {
+      const lawyerFresco = await sessionFor(lawyerId);
+      // Un cliente real de otra causa: no es el dueño de esta causa, aunque exista en la base.
+      clienteAjeno = await sessionFor(otherClientId);
+      const subirVisible = await fetch(`${base}/cases/${seedCase}/documents`, { method: "POST", headers: { cookie: lawyerFresco },
+        body: (() => { const f = new FormData(); f.append("file", new Blob([contenido], { type: "text/plain" }), "para-cliente.txt"); f.append("title", "Documento para el cliente"); f.append("category", "OTHER"); f.append("visibility", "CLIENT"); return f; })() });
+      assert.equal(subirVisible.status, 201, "el abogado sube un documento visible");
+      visible = (await db.query("SELECT v.id FROM document_versions v JOIN documents d ON d.id=v.document_id WHERE d.title=$1 ORDER BY v.created_at DESC LIMIT 1", ["Documento para el cliente"])).rows[0].id;
+      const subirInterno = await fetch(`${base}/cases/${seedCase}/documents`, { method: "POST", headers: { cookie: lawyerFresco },
+        body: (() => { const f = new FormData(); f.append("file", new Blob(["Interno "], { type: "text/plain" }), "solo-equipo.txt"); f.append("title", "Documento interno"); f.append("category", "OTHER"); f.append("visibility", "INTERNAL"); return f; })() });
+      assert.equal(subirInterno.status, 201);
+      interno = (await db.query("SELECT v.id FROM document_versions v JOIN documents d ON d.id=v.document_id WHERE d.title=$1 ORDER BY v.created_at DESC LIMIT 1", ["Documento interno"])).rows[0].id;
+    });
+    const descargar = (versionId, cookie) => fetch(`${base}/documents/${versionId}/download`, { headers: { cookie } });
+    it("caso feliz: el cliente descarga el documento visible con su contenido exacto", async () => {
+      // Sesión creada justo antes: la de inicio de la suite puede haber vencido por inactividad.
+      const clienteFresco = await sessionFor(clientId);
+      const res = await descargar(visible, clienteFresco);
+      assert.equal(res.status, 200);
+      assert.equal(await res.text(), contenido, "el archivo llega sin alterar");
+      assert.match(res.headers.get("content-disposition") || "", /para-cliente\.txt/, "el nombre original se conserva");
+    });
+    it("caso triste: el cliente no descarga un documento interno, y un tercero no descarga nada", async () => {
+      assert.equal((await descargar(interno, await sessionFor(clientId))).status, 404, "lo interno no se revela al cliente");
+      assert.equal((await descargar(visible, clienteAjeno)).status, 404, "otro cliente no accede a esta causa");
+      assert.equal((await descargar(visible, undefined)).status, 401, "sin sesión no hay descarga");
+    });
+    it("caso borde: el abogado de la causa descarga también lo interno, y un id inexistente responde 404", async () => {
+      const res = await descargar(interno, await sessionFor(lawyerId));
+      assert.equal(res.status, 200);
+      assert.equal(await res.text(), "Interno ");
+      assert.equal((await descargar("00000000-0000-4000-8000-000000000000", await sessionFor(clientId))).status, 404);
+    });
+  });
+  describe("HU-04 · Recuperación de contraseña", () => {
+    const recovery = randomBytes(4).toString("hex");
+    const recoveryEmail = `recuperar-${recovery}@example.test`;
+    let recoveryUser;
+    before(async () => {
+      recoveryUser = randomUUID();
+      await db.query("INSERT INTO users (id,name,email,password_hash,role) VALUES ($1,'Usuario recuperación',$2,$3,'LAWYER')", [recoveryUser, recoveryEmail, await hashPassword(password)]);
+    });
+    // Cada prueba usa un correo distinto para no agotar el límite de 5 peticiones por minuto de la IP.
+    const forgot = (email) => request("/auth/forgot-password", "POST", { email });
+    const reset = (token, newPassword) => request("/auth/reset-password", "POST", { token, newPassword });
+    it("caso feliz: el enlace funciona una vez, guarda solo el hash, cambia la contraseña y revoca las sesiones", async () => {
+      const sent = await forgot(recoveryEmail);
+      assert.equal(sent.status, 201);
+      const token = sent.json.developmentToken;
+      assert.match(token, /^[a-f0-9]{64}$/, "token de 64 caracteres hexadecimales");
+      const hashGuardado = (await db.query("SELECT token_hash FROM password_reset_tokens WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", [recoveryUser])).rows[0].token_hash;
+      assert.equal(hashGuardado, createHash("sha256").update(token).digest("hex"), "la base guarda el hash, no el token");
+      // Una sesión abierta ANTES del restablecimiento: debe quedar revocada después.
+      const cookie = await sessionFor(recoveryUser);
+      const tokenSesion = cookie.split("=")[1];
+      const hashSesion = createHash("sha256").update(tokenSesion).digest("hex");
+      const estadoSesion = async () => (await db.query("SELECT revoked_at IS NOT NULL AS revocada FROM sessions WHERE token_hash=$1", [hashSesion])).rows[0].revocada;
+      assert.equal(await estadoSesion(), false, "la sesión está activa antes de restablecer");
+      const nuevaClave = "Recuperada-" + randomBytes(6).toString("hex") + "-x";
+      assert.equal((await reset(token, nuevaClave)).status, 201, "el enlace válido restablece la clave");
+      assert.equal(await estadoSesion(), true, "restablecer la clave revoca la sesión abierta");
+      assert.ok(await verifyPassword(nuevaClave, (await db.query("SELECT password_hash FROM users WHERE id=$1", [recoveryUser])).rows[0].password_hash), "la clave nueva quedó guardada");
+      assert.equal((await reset(token, nuevaClave + "-2")).status, 400, "el mismo enlace no sirve una segunda vez");
+    });
+    it("caso triste: un token inventado o con formato inválido no cambia nada", async () => {
+      const antes = (await db.query("SELECT password_hash FROM users WHERE id=$1", [recoveryUser])).rows[0].password_hash;
+      assert.equal((await reset("a".repeat(64), "Inventada-" + randomBytes(6).toString("hex") + "-x")).status, 400);
+      assert.equal((await reset("no-es-hex", "Inventada-" + randomBytes(6).toString("hex") + "-x")).status, 400);
+      const despues = (await db.query("SELECT password_hash FROM users WHERE id=$1", [recoveryUser])).rows[0].password_hash;
+      assert.equal(despues, antes, "la clave no cambió con un token falso");
+    });
+    it("caso borde: un enlace vencido no sirve, y pedir un correo inexistente responde igual que uno real", async () => {
+      // La tabla exige expires_at > created_at, así que un enlace vencido se crea ya vencido, con ambas fechas en el pasado.
+      const vencidoToken = randomBytes(32).toString("hex");
+      await db.query(
+        "INSERT INTO password_reset_tokens(token_hash,user_id,created_at,expires_at) VALUES($1,$2,now()-interval '2 hours',now()-interval '1 hour')",
+        [createHash("sha256").update(vencidoToken).digest("hex"), recoveryUser],
+      );
+      assert.equal((await reset(vencidoToken, "Vencida-" + randomBytes(6).toString("hex") + "-x")).status, 400, "el enlace vencido se rechaza");
+      const inexistente = await forgot(`no-existe-${randomBytes(4).toString("hex")}@example.test`);
+      assert.equal(inexistente.status, 201, "no revela si la cuenta existe");
+      assert.equal(inexistente.json.developmentToken, undefined, "sin token para cuentas inexistentes");
+    });
+  });
   describe("E26 · Límites de peticiones por usuario y no por IP", () => {
     const users = {};
     before(async () => {
